@@ -1153,29 +1153,44 @@ function renderReports(){
   drawReportCharts();
 }
 
-function applyReportPreset(){
-  const val=document.getElementById('rpt-preset').value;const now=new Date();
+let activePreset='this_month';
+
+function getPresetDates(val){
+  const now=new Date();
   const p={this_week:[startOfWeek(now),now],this_month:[new Date(now.getFullYear(),now.getMonth(),1),now],last_month:[new Date(now.getFullYear(),now.getMonth()-1,1),new Date(now.getFullYear(),now.getMonth(),0)],this_year:[new Date(now.getFullYear(),0,1),now],last_year:[new Date(now.getFullYear()-1,0,1),new Date(now.getFullYear()-1,11,31)],all_time:[new Date('2000-01-01'),now]};
+  return p[val]||p['this_month'];
+}
+
+function applyReportPreset(){
+  const val=document.getElementById('rpt-preset').value;
+  activePreset=val;
   const fw=document.getElementById('rpt-from-wrap'),tw=document.getElementById('rpt-to-wrap');
-  if(val==='custom'){fw.style.display='';tw.style.display='';}else{fw.style.display='none';tw.style.display='none';const[f,t]=p[val];document.getElementById('rpt-from').value=f.toISOString().substring(0,10);document.getElementById('rpt-to').value=t.toISOString().substring(0,10);drawReportCharts();}
+  if(val==='custom'){fw.style.display='';tw.style.display='';}
+  else{fw.style.display='none';tw.style.display='none';drawReportCharts();}
 }
 function startOfWeek(d){const c=new Date(d);c.setDate(c.getDate()-c.getDay()+1);c.setHours(0,0,0,0);return c;}
 
 function drawReportCharts(){
-  const from=new Date(document.getElementById('rpt-from').value);
-  const to=new Date(document.getElementById('rpt-to').value);to.setHours(23,59,59);
   const products=rowsToObjects(sheetData.Product,true);
   const soldStatuses=['sold','received by buyer','posted to buyer'];
-  // Check if this is effectively "all time" (from year 2000)
-  const isAllTime=from.getFullYear()<=2000;
+  const isAllTime=activePreset==='all_time';
+  let from,to;
+  if(isAllTime){
+    from=new Date('2000-01-01');to=new Date();to.setHours(23,59,59);
+  } else if(activePreset==='custom'){
+    from=new Date(document.getElementById('rpt-from').value);
+    to=new Date(document.getElementById('rpt-to').value);to.setHours(23,59,59);
+  } else {
+    const[f,t]=getPresetDates(activePreset);from=new Date(f);to=new Date(t);to.setHours(23,59,59);
+  }
   const purchased=products.filter(r=>{
-    if(isAllTime)return true; // all time — include everything
+    if(isAllTime)return true;
     const d=parseDateValue(r.Purchase_date);return d&&d>=from&&d<=to;
   });
   const sold=products.filter(r=>{
     const s=(r.Status||'').toLowerCase();
     if(!soldStatuses.includes(s))return false;
-    if(isAllTime)return true; // all time — include all sold-status items regardless of date
+    if(isAllTime)return true;
     const d=parseDateValue(r.Sale_date);return d&&d>=from&&d<=to;
   });
   const mk=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -1349,7 +1364,10 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.1 — Reports count fix (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.2 — All time filter fix (current)</p>
+          <p style="color:var(--text2)">• Fixed "All time" preset getting stuck — activePreset variable now drives filtering directly, no longer reads hidden date inputs</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.1 — Reports count fix</p>
           <p style="color:var(--text2)">• Fixed mismatch between summary card counts and period summary counts — "All time" now includes all items with a sold status regardless of whether a sale date is entered, matching the summary cards</p>
 
           <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.0 — Dashboard &amp; Reports overhaul</p>
