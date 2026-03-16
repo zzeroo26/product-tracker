@@ -551,19 +551,59 @@ function exportCSV(){
 function switchTab(tab,btn){document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');['dashboard','products','accessories','tools','strategy','reports','calculator'].forEach(t=>{document.getElementById('tab-'+t).style.display=t===tab?'block':'none';});if(tab==='reports')renderReports();if(tab==='calculator')renderCalculator();}
 function renderAll(){renderDashboard();renderProductsTable();renderSimpleTable('Accessories','tab-accessories','accessory');renderSimpleTable('Tools','tab-tools','tool');renderStrategy();}
 
-// ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function renderDashboard(){
-  const raw=sheetData.Dashboard;
-  const get=label=>{const row=raw.find(r=>r[0]&&r[0].toString().trim().toLowerCase()===label.toLowerCase());return row?row[1]:null;};
-  const f=v=>{const x=parseFloat(v);return isNaN(x)?'—':'£'+x.toFixed(2);};
-  const n=v=>{const x=parseFloat(v);return isNaN(x)?'—':Math.round(x);};
-  const pc=v=>parseFloat(v)>=0?'green':'red';
+// ── STATS ENGINE — single source of truth ─────────────────────────────────────
+function calcStats(){
   const products=rowsToObjects(sheetData.Product,true);
+  const accessories=rowsToObjects(sheetData.Accessories);
+  const tools=rowsToObjects(sheetData.Tools);
+  const soldStatuses=['sold','received by buyer','posted to buyer'];
+  const sold=products.filter(r=>soldStatuses.includes((r.Status||'').toString().trim().toLowerCase()));
+  const stockItems=products.filter(r=>getStockStatuses().includes((r.Status||'').toString().trim().toLowerCase()));
 
-  // Stock value (unsold)
-  const unsold=products.filter(r=>{const s=(r.Status||'').toString().trim().toLowerCase();return getStockStatuses().includes(s);});
-  const stockValue=unsold.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
+  const revenue=sold.reduce((a,r)=>a+parseFloat(r.Sale_price||0),0);
+  const cogsItems=sold.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0); // cost of sold items only
+  const accCost=accessories.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
+  const toolCost=tools.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
+  const netProfit=revenue-cogsItems-accCost-toolCost;
+  const grossProfit=revenue-cogsItems; // before overheads
+  const allItemCost=products.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
+  const stockValue=stockItems.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
+  const pct=settings.minProfitPct||35;
+  const stockMinSellValue=stockItems.reduce((a,r)=>a+(parseFloat(r.Purchase_Price||0)*(1+pct/100)),0);
+  const profits=sold.map(r=>parseFloat(r.Profit||0)).filter(p=>!isNaN(p));
+  const avgMarkup=sold.length?sold.reduce((a,r)=>{const p=parseFloat(r.Profit||0);const c=parseFloat(r.Purchase_Price||0);return a+(c>0?p/c*100:0);},0)/sold.length:0;
 
+  // Status counts
+  const byStatus={};
+  products.forEach(r=>{const s=(r.Status||'Other').toString().trim();byStatus[s]=(byStatus[s]||0)+1;});
+
+  return{
+    totalItems:products.length,
+    soldCount:sold.length,
+    stockCount:stockItems.length,
+    revenue,cogsItems,accCost,toolCost,
+    netProfit,grossProfit,allItemCost,
+    stockValue,stockMinSellValue,
+    avgSalePrice:sold.length?revenue/sold.length:0,
+    avgBuyPrice:products.length?allItemCost/products.length:0,
+    avgMarkup,
+    maxProfit:profits.length?Math.max(...profits):0,
+    minProfit:profits.length?Math.min(...profits):0,
+    avgProfit:profits.length?profits.reduce((a,b)=>a+b,0)/profits.length:0,
+    byStatus,
+    advertised:products.filter(r=>(r.Status||'').toString().trim().toLowerCase()==='advertised'),
+    products,sold,stockItems
+  };
+}
+
+// Info icon helper
+function info(text){
+  return`<span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);font-size:10px;font-weight:600;text-align:center;line-height:15px;cursor:help;margin-left:5px;flex-shrink:0" title="${text}">i</span>`;
+}
+
+// ── DASHBOARD — listings monitor only ─────────────────────────────────────────
+function renderDashboard(){
+  const products=rowsToObjects(sheetData.Product,true);
   const advItems=products.filter(r=>(r.Status||'').toString().trim().toLowerCase()==='advertised').map(r=>{
     const d=parseDateValue(r['Advertised Date']);const days=d?Math.floor((new Date()-d)/(1000*60*60*24)):null;
     const cls=days===null?'green-item':days>=10?'red-item':days>=5?'amber-item':'green-item';
@@ -576,22 +616,10 @@ function renderDashboard(){
         <div style="font-size:11px;color:var(--text2)">${r.Colour||''} ${r.Model_Code?'· '+r.Model_Code:''}</div>
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-left:auto;align-items:center">
-        <div style="text-align:center">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Bought</div>
-          <div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace">${cost?'£'+cost.toFixed(2):'—'}</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Min sell</div>
-          <div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace;color:var(--green)">£${minSell}</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Listed</div>
-          <div style="font-size:13px;font-weight:500">${advDateStr}</div>
-        </div>
-        <div style="text-align:center;min-width:50px">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Days</div>
-          <div style="font-size:18px;font-weight:600">${days!==null?days:'—'}</div>
-        </div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Bought</div><div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace">${cost?'£'+cost.toFixed(2):'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Min sell</div><div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace;color:var(--green)">£${minSell}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Listed</div><div style="font-size:13px;font-weight:500">${advDateStr}</div></div>
+        <div style="text-align:center;min-width:50px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Days</div><div style="font-size:18px;font-weight:600">${days!==null?days:'—'}</div></div>
         <div style="display:flex;gap:6px">
           <button class="btn-edit" onclick="event.stopPropagation();openProductModal('${r.Internal_ID}')">Edit</button>
           <button class="btn-edit" onclick="event.stopPropagation();quickUpdateStatus('${r.Internal_ID}','Sold')" style="color:var(--green);border-color:#86efac">Sold</button>
@@ -603,47 +631,15 @@ function renderDashboard(){
   const notifBtn=settings.notifEnabled?`<span style="font-size:12px;color:var(--green)">🔔 Notifications on</span>`:`<button class="btn-secondary" style="font-size:12px" onclick="requestNotifPermission()">🔔 Enable notifications</button>`;
 
   document.getElementById('tab-dashboard').innerHTML=`
-    <div class="dash-grid">
-      <div class="dash-card"><div class="dc-label">Vacuums bought</div><div class="dc-value">${n(get('Vacuums Bought'))}</div></div>
-      <div class="dash-card"><div class="dc-label">Products sold</div><div class="dc-value">${n(get('Products Sold'))}</div></div>
-      <div class="dash-card"><div class="dc-label">Total earnings</div><div class="dc-value green">${f(get('Earnings'))}</div></div>
-      <div class="dash-card"><div class="dc-label">Total profit</div><div class="dc-value ${pc(get('Total Profit'))}">${f(get('Total Profit'))}</div></div>
-      <div class="dash-card"><div class="dc-label">Total cost</div><div class="dc-value">${f(get('Total Cost'))}</div></div>
-      <div class="dash-card"><div class="dc-label">Avg sale price</div><div class="dc-value">${f(get('Avg Sale Price'))}</div></div>
-      <div class="dash-card"><div class="dc-label">Avg profit/sale</div><div class="dc-value">${f(get('Avg Profit Per Sale'))}</div></div>
-      <div class="dash-card"><div class="dc-label">Stock value</div><div class="dc-value amber" style="color:var(--amber)">${'£'+stockValue.toFixed(2)}</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem">
-      <div class="dash-section"><h3>Costs</h3>
-        <div class="dash-row"><span>Products</span><span class="dr-val">${f(get('Products Cost'))}</span></div>
-        <div class="dash-row"><span>Accessories</span><span class="dr-val">${f(get('Accessories Cost'))}</span></div>
-        <div class="dash-row"><span>Tools</span><span class="dr-val">${f(get('Tools Cost'))}</span></div>
-        <div class="dash-row"><span><strong>Total</strong></span><span class="dr-val"><strong>${f(get('Total Cost'))}</strong></span></div>
-        <div class="dash-row"><span>Avg purchase price</span><span class="dr-val">${f(get('Avg Purchase Price Per vacuum'))}</span></div>
-      </div>
-      <div class="dash-section"><h3>Profit stats</h3>
-        <div class="dash-row"><span>Max profit</span><span class="dr-val green">${f(get('Max Profit on sale'))}</span></div>
-        <div class="dash-row"><span>Min profit</span><span class="dr-val ${pc(get('Min Profit on sale'))}">${f(get('Min Profit on sale'))}</span></div>
-        <div class="dash-row"><span>Avg profit/sale</span><span class="dr-val">${f(get('Avg Profit Per Sale'))}</span></div>
-        <div class="dash-row"><span>Min margin target</span><span class="dr-val">${settings.minProfitPct||35}% <button class="btn-edit" onclick="openSettingsModal()" style="margin-left:4px">edit</button></span></div>
-      </div>
-      <div class="dash-section"><h3>Stock</h3>
-        <div class="dash-row"><span>Bought</span><span class="dr-val">${n(get('Products Bought'))}</span></div>
-        <div class="dash-row"><span>Sold</span><span class="dr-val">${n(get('Products Sold'))}</span></div>
-        <div class="dash-row"><span>Advertised</span><span class="dr-val">${n(get('Products Advertised'))}</span></div>
-        <div class="dash-row"><span>Awaiting arrival</span><span class="dr-val">${n(get('Products Awaiting Arrival'))}</span></div>
-        <div class="dash-row"><span>Not yet advertised</span><span class="dr-val">${n(get('Received but not Advertised'))}</span></div>
-        <div class="dash-row"><span>Defects</span><span class="dr-val red">${n(get('Products with defect'))}</span></div>
-      </div>
-    </div>
     <div class="dash-section">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
         <h3 style="margin-bottom:0">Advertised listings — action tracker</h3>
-        ${notifBtn}
+        <div style="display:flex;align-items:center;gap:10px">${notifBtn}</div>
       </div>
-      ${advItems||'<p style="color:var(--text3);font-size:13px">No advertised listings.</p>'}
-      <p style="font-size:11px;color:var(--text3);margin-top:8px">🟢 0–4 days &nbsp; 🟡 5–9 days &nbsp; 🔴 10+ days</p>
-    </div>`;
+      ${advItems||'<p style="color:var(--text3);font-size:13px;padding:.5rem 0">No items currently advertised.</p>'}
+      <p style="font-size:11px;color:var(--text3);margin-top:8px">🟢 0–4 days &nbsp; 🟡 5–9 days &nbsp; 🔴 10+ days &nbsp;·&nbsp; Min sell based on ${settings.minProfitPct||35}% markup target</p>
+    </div>
+    <p style="font-size:12px;color:var(--text3);margin-top:.5rem">For full financials and charts, go to the <strong>Reports</strong> tab.</p>`;
 }
 
 // ── SETTINGS MODAL ────────────────────────────────────────────────────────────
@@ -1068,10 +1064,62 @@ function renderStrategy(){
   document.getElementById('tab-strategy').innerHTML=sections.map(s=>`<div class="strategy-section"><div class="strat-header"><h3>${s.title}</h3></div><table class="strat-table">${s.headers.length?`<thead><tr>${s.headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>`:''}<tbody>${s.rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('');
 }
 
-// ── REPORTS ───────────────────────────────────────────────────────────────────
+// ── REPORTS — single source of truth ─────────────────────────────────────────
 function renderReports(){
-  const el=document.getElementById('tab-reports');Object.values(reportCharts).forEach(c=>c.destroy());reportCharts={};
+  const el=document.getElementById('tab-reports');
+  Object.values(reportCharts).forEach(c=>c.destroy());reportCharts={};
+  const st=calcStats();
+  const f=v=>'£'+v.toFixed(2);
+  const pc=v=>v>=0?'green':'red';
+  const pct=settings.minProfitPct||35;
+
   el.innerHTML=`
+    <!-- SECTION 1: Summary cards -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+      <h2 style="font-size:16px;font-weight:600">Business summary</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary" onclick="syncDashboardToExcel()" style="font-size:12px">↑ Sync to Excel</button>
+        <button class="btn-secondary" onclick="renderReports()" style="font-size:12px">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:1.5rem">
+      <div class="dash-card"><div class="dc-label" style="display:flex;align-items:center">Items bought${info('Total number of items ever logged in the Products sheet, regardless of status.')}</div><div class="dc-value">${st.totalItems}</div></div>
+      <div class="dash-card"><div class="dc-label" style="display:flex;align-items:center">Items sold${info('Items with status: Sold, Posted to buyer, or Received By Buyer.')}</div><div class="dc-value">${st.soldCount}</div></div>
+      <div class="dash-card"><div class="dc-label" style="display:flex;align-items:center">In stock${info('Items whose status is flagged as "In stock calc" in Settings. Currently: '+getStockStatuses().join(', ')+'.')}</div><div class="dc-value">${st.stockCount}</div></div>
+      <div class="dash-card"><div class="dc-label" style="display:flex;align-items:center">Revenue${info('Total of all Sale prices for sold items only.')}</div><div class="dc-value green">${f(st.revenue)}</div></div>
+      <div class="dash-card"><div class="dc-label" style="display:flex;align-items:center">Net profit${info('Revenue minus cost of sold items, minus all accessories costs, minus all tools costs. This is your actual take-home profit.')}</div><div class="dc-value ${pc(st.netProfit)}">${f(st.netProfit)}</div></div>
+      <div class="dash-card"><div class="dc-label" style="display:flex;align-items:center">Gross profit${info('Revenue minus cost of sold items only — before deducting accessories and tools overheads.')}</div><div class="dc-value ${pc(st.grossProfit)}">${f(st.grossProfit)}</div></div>
+      <div class="dash-card"><div class="dc-label" style="display:flex;align-items:center">Stock value${info('Total purchase cost of all items currently in stock (statuses flagged as "In stock calc").')}</div><div class="dc-value" style="color:var(--amber)">${f(st.stockValue)}</div></div>
+      <div class="dash-card"><div class="dc-label" style="display:flex;align-items:center">Est. stock sell${info('Estimated total revenue if all stock sells at the minimum price (cost × '+pct+'% markup).')}</div><div class="dc-value green">${f(st.stockMinSellValue)}</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1.5rem">
+      <div class="dash-section"><h3>Cost breakdown</h3>
+        <div class="dash-row"><span style="display:flex;align-items:center">Item costs (sold only)${info('Purchase price of items that have been sold. This is the COGS — Cost of Goods Sold — the standard business way to calculate profit.')}</span><span class="dr-val">${f(st.cogsItems)}</span></div>
+        <div class="dash-row"><span style="display:flex;align-items:center">Accessories overhead${info('Total spent on all accessories. Treated as a business overhead deducted from overall profit.')}</span><span class="dr-val">${f(st.accCost)}</span></div>
+        <div class="dash-row"><span style="display:flex;align-items:center">Tools overhead${info('Total spent on all tools. Treated as a business overhead deducted from overall profit.')}</span><span class="dr-val">${f(st.toolCost)}</span></div>
+        <div class="dash-row"><span style="display:flex;align-items:center">All item costs (ever)${info('Total purchase cost of every item ever bought, including unsold stock.')}</span><span class="dr-val">${f(st.allItemCost)}</span></div>
+      </div>
+      <div class="dash-section"><h3>Profit stats</h3>
+        <div class="dash-row"><span style="display:flex;align-items:center">Avg sale price${info('Average sale price across all sold items.')}</span><span class="dr-val">${f(st.avgSalePrice)}</span></div>
+        <div class="dash-row"><span style="display:flex;align-items:center">Avg buy price${info('Average purchase price across all items ever bought.')}</span><span class="dr-val">${f(st.avgBuyPrice)}</span></div>
+        <div class="dash-row"><span style="display:flex;align-items:center">Avg markup%${info('Average markup on cost across all sold items. Markup = (profit ÷ buy price) × 100.')}</span><span class="dr-val">${st.avgMarkup.toFixed(1)}%</span></div>
+        <div class="dash-row"><span style="display:flex;align-items:center">Best sale profit${info('Highest profit made on a single item sale.')}</span><span class="dr-val green">${f(st.maxProfit)}</span></div>
+        <div class="dash-row"><span style="display:flex;align-items:center">Worst sale profit${info('Lowest profit (or biggest loss) on a single item sale.')}</span><span class="dr-val ${pc(st.minProfit)}">${f(st.minProfit)}</span></div>
+        <div class="dash-row"><span style="display:flex;align-items:center">Avg profit/sale${info('Average profit per sold item, before overhead deductions.')}</span><span class="dr-val">${f(st.avgProfit)}</span></div>
+      </div>
+      <div class="dash-section"><h3>Stock overview</h3>
+        ${Object.entries(st.byStatus).map(([s,c])=>`<div class="dash-row"><span>${s}</span><span class="dr-val">${c}</span></div>`).join('')}
+        <div class="dash-row" style="margin-top:6px"><span style="display:flex;align-items:center"><strong>Stock value</strong>${info('Cost value of unsold stock.')}</span><span class="dr-val" style="color:var(--amber)">${f(st.stockValue)}</span></div>
+        <div class="dash-row"><span style="display:flex;align-items:center"><strong>Est. sell value</strong>${info('What unsold stock could earn at '+pct+'% markup.')}</span><span class="dr-val green">${f(st.stockMinSellValue)}</span></div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: Period charts -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+      <h2 style="font-size:16px;font-weight:600">Performance over time</h2>
+    </div>
     <div class="report-controls">
       <div class="field"><label>Period</label>
         <select id="rpt-preset" onchange="applyReportPreset()">
@@ -1086,18 +1134,22 @@ function renderReports(){
       <button class="btn-primary" style="align-self:flex-end" onclick="drawReportCharts()">Apply</button>
     </div>
     <div class="chart-grid">
-      <div class="chart-card"><h3>Sales revenue by month</h3><canvas id="chart-revenue"></canvas></div>
-      <div class="chart-card"><h3>Profit by month</h3><canvas id="chart-profit"></canvas></div>
-      <div class="chart-card"><h3>Units sold by month</h3><canvas id="chart-units"></canvas></div>
-      <div class="chart-card"><h3>Purchase costs by month</h3><canvas id="chart-costs"></canvas></div>
+      <div class="chart-card"><h3 style="display:flex;align-items:center">Revenue by month${info('Total sale prices of sold items per month, filtered by sale date.')}</h3><canvas id="chart-revenue"></canvas></div>
+      <div class="chart-card"><h3 style="display:flex;align-items:center">Net profit by month${info('Revenue minus item purchase cost per month. Does not include accessories/tools overhead in the per-month breakdown.')}</h3><canvas id="chart-profit"></canvas></div>
+      <div class="chart-card"><h3 style="display:flex;align-items:center">Items sold by month${info('Count of items sold per month.')}</h3><canvas id="chart-units"></canvas></div>
+      <div class="chart-card"><h3 style="display:flex;align-items:center">Purchase costs by month${info('Total amount spent buying items per month, filtered by purchase date.')}</h3><canvas id="chart-costs"></canvas></div>
     </div>
     <div class="chart-grid3">
-      <div class="chart-card"><h3>Profit by sale platform</h3><canvas id="chart-platform"></canvas></div>
-      <div class="chart-card"><h3>Profit by make</h3><canvas id="chart-make"></canvas></div>
-      <div class="chart-card"><h3>Best &amp; worst purchases</h3><canvas id="chart-bestworst"></canvas></div>
+      <div class="chart-card"><h3 style="display:flex;align-items:center">Profit by sale platform${info('Total profit grouped by where each item was sold (Vinted, eBay, Facebook etc).')}</h3><canvas id="chart-platform"></canvas></div>
+      <div class="chart-card"><h3 style="display:flex;align-items:center">Profit by make${info('Total profit grouped by the make/brand of the item.')}</h3><canvas id="chart-make"></canvas></div>
+      <div class="chart-card"><h3 style="display:flex;align-items:center">Best &amp; worst sales${info('Top 5 most profitable and bottom 5 least profitable individual sales.')}</h3><canvas id="chart-bestworst"></canvas></div>
     </div>
-    <div class="dash-section" id="rpt-summary"></div>`;
-  const now=new Date();document.getElementById('rpt-from').value=new Date(now.getFullYear(),now.getMonth(),1).toISOString().substring(0,10);document.getElementById('rpt-to').value=now.toISOString().substring(0,10);
+    <div class="dash-section" id="rpt-period-summary"></div>`;
+
+  // Set default dates and draw charts
+  const now=new Date();
+  document.getElementById('rpt-from').value=new Date(now.getFullYear(),now.getMonth(),1).toISOString().substring(0,10);
+  document.getElementById('rpt-to').value=now.toISOString().substring(0,10);
   drawReportCharts();
 }
 
@@ -1110,10 +1162,12 @@ function applyReportPreset(){
 function startOfWeek(d){const c=new Date(d);c.setDate(c.getDate()-c.getDay()+1);c.setHours(0,0,0,0);return c;}
 
 function drawReportCharts(){
-  const from=new Date(document.getElementById('rpt-from').value);const to=new Date(document.getElementById('rpt-to').value);to.setHours(23,59,59);
+  const from=new Date(document.getElementById('rpt-from').value);
+  const to=new Date(document.getElementById('rpt-to').value);to.setHours(23,59,59);
   const products=rowsToObjects(sheetData.Product,true);
+  const soldStatuses=['sold','received by buyer','posted to buyer'];
   const purchased=products.filter(r=>{const d=parseDateValue(r.Purchase_date);return d&&d>=from&&d<=to;});
-  const sold=products.filter(r=>{const d=parseDateValue(r.Sale_date);return d&&d>=from&&d<=to&&r.Sale_price;});
+  const sold=products.filter(r=>{const d=parseDateValue(r.Sale_date);const s=(r.Status||'').toLowerCase();return d&&d>=from&&d<=to&&soldStatuses.includes(s);});
   const mk=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
   const ml=k=>{const[y,m]=k.split('-');return new Date(y,m-1,1).toLocaleDateString('en-GB',{month:'short',year:'2-digit'});};
   const rev={},prf={},unt={},cst={};
@@ -1121,17 +1175,17 @@ function drawReportCharts(){
   purchased.forEach(r=>{const k=mk(parseDateValue(r.Purchase_date));cst[k]=(cst[k]||0)+parseFloat(r.Purchase_Price||0);});
   const months=[...new Set([...Object.keys(rev),...Object.keys(cst)])].sort();const labels=months.map(ml);
 
-  const mkBar=(id,label,data,color)=>{if(reportCharts[id])reportCharts[id].destroy();const ctx=document.getElementById(id);if(!ctx)return;reportCharts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label,data:months.map(m=>+(data[m]||0).toFixed(2)),backgroundColor:color+'33',borderColor:color,borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>(label==='Units'?'':' £')+v}}}}});};
-  mkBar('chart-revenue','Revenue',rev,'#2563eb');mkBar('chart-profit','Profit',prf,'#16a34a');mkBar('chart-units','Units',unt,'#d97706');mkBar('chart-costs','Costs',cst,'#dc2626');
+  const mkBar=(id,data,color,isCurrency=true)=>{if(reportCharts[id])reportCharts[id].destroy();const ctx=document.getElementById(id);if(!ctx)return;reportCharts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data:months.map(m=>+(data[m]||0).toFixed(2)),backgroundColor:color+'33',borderColor:color,borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>isCurrency?'£'+v:v}}}}});};
+  mkBar('chart-revenue',rev,'#2563eb');mkBar('chart-profit',prf,'#16a34a');mkBar('chart-units',unt,'#d97706',false);mkBar('chart-costs',cst,'#dc2626');
 
-  // Profit by platform (doughnut)
+  // Profit by platform
   const platProfit={};
   sold.forEach(r=>{const p=(r.Sale_Platform||'Other').toString().trim()||'Other';platProfit[p]=(platProfit[p]||0)+parseFloat(r.Profit||0);});
   if(reportCharts['chart-platform'])reportCharts['chart-platform'].destroy();
   const pCtx=document.getElementById('chart-platform');
   if(pCtx&&Object.keys(platProfit).length){reportCharts['chart-platform']=new Chart(pCtx,{type:'doughnut',data:{labels:Object.keys(platProfit),datasets:[{data:Object.values(platProfit).map(v=>+v.toFixed(2)),backgroundColor:['#2563eb','#16a34a','#d97706','#dc2626','#7e22ce','#0369a1']}]},options:{responsive:true,plugins:{legend:{position:'bottom'}}}});}
 
-  // Profit by make (bar)
+  // Profit by make
   const makeProfit={};
   sold.forEach(r=>{const m=(r.Make||'Unknown').toString().trim()||'Unknown';makeProfit[m]=(makeProfit[m]||0)+parseFloat(r.Profit||0);});
   const makeKeys=Object.keys(makeProfit).sort((a,b)=>makeProfit[b]-makeProfit[a]);
@@ -1139,7 +1193,7 @@ function drawReportCharts(){
   const mCtx=document.getElementById('chart-make');
   if(mCtx){reportCharts['chart-make']=new Chart(mCtx,{type:'bar',data:{labels:makeKeys,datasets:[{data:makeKeys.map(k=>+makeProfit[k].toFixed(2)),backgroundColor:'#2563eb33',borderColor:'#2563eb',borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'£'+v}}}}});}
 
-  // Best & worst 5 purchases by profit
+  // Best & worst 5
   const withProfit=sold.filter(r=>r.Profit!==''&&r.Profit!==null).sort((a,b)=>parseFloat(b.Profit)-parseFloat(a.Profit));
   const top5=withProfit.slice(0,5);const bot5=[...withProfit].reverse().slice(0,5);
   const bwItems=[...top5,...bot5.reverse()];
@@ -1150,17 +1204,69 @@ function drawReportCharts(){
   const bwCtx=document.getElementById('chart-bestworst');
   if(bwCtx){reportCharts['chart-bestworst']=new Chart(bwCtx,{type:'bar',data:{labels:bwLabels,datasets:[{data:bwData,backgroundColor:bwColors.map(c=>c+'55'),borderColor:bwColors,borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'£'+v}}}}});}
 
-  const tR=sold.reduce((a,r)=>a+parseFloat(r.Sale_price||0),0),tP=sold.reduce((a,r)=>a+parseFloat(r.Profit||0),0),tC=purchased.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
-  const belowTarget=sold.filter(r=>{const p=parseFloat(r.Profit||0);const cost=parseFloat(r.Purchase_Price||0);return p>0&&cost>0&&(p/cost)*100<(settings.minProfitPct||35);}).length;
-  document.getElementById('rpt-summary').innerHTML=`<h3>Summary</h3>
-    <div class="dash-row"><span>Units sold</span><span class="dr-val">${sold.length}</span></div>
-    <div class="dash-row"><span>Units purchased</span><span class="dr-val">${purchased.length}</span></div>
-    <div class="dash-row"><span>Total revenue</span><span class="dr-val green">£${tR.toFixed(2)}</span></div>
-    <div class="dash-row"><span>Total profit</span><span class="dr-val ${tP>=0?'green':'red'}">£${tP.toFixed(2)}</span></div>
-    <div class="dash-row"><span>Purchase costs</span><span class="dr-val">£${tC.toFixed(2)}</span></div>
-    <div class="dash-row"><span>Avg sale price</span><span class="dr-val">${sold.length?'£'+(tR/sold.length).toFixed(2):'—'}</span></div>
-    <div class="dash-row"><span>Avg profit/sale</span><span class="dr-val">${sold.length?'£'+(tP/sold.length).toFixed(2):'—'}</span></div>
-    <div class="dash-row"><span>Sales below ${settings.minProfitPct||35}% margin</span><span class="dr-val" style="color:var(--amber)">${belowTarget}</span></div>`;
+  // Period summary
+  const pct=settings.minProfitPct||35;
+  const tR=sold.reduce((a,r)=>a+parseFloat(r.Sale_price||0),0);
+  const tP=sold.reduce((a,r)=>a+parseFloat(r.Profit||0),0);
+  const tC=purchased.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
+  const belowTarget=sold.filter(r=>{const p=parseFloat(r.Profit||0);const c=parseFloat(r.Purchase_Price||0);return p>0&&c>0&&(p/c)*100<pct;}).length;
+  const sumEl=document.getElementById('rpt-period-summary');
+  if(sumEl)sumEl.innerHTML=`<h3>Period summary</h3>
+    <div class="dash-row"><span style="display:flex;align-items:center">Items sold${info('Count of sold items in this period.')}</span><span class="dr-val">${sold.length}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Items purchased${info('Count of items bought in this period.')}</span><span class="dr-val">${purchased.length}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Revenue${info('Total sale prices in this period.')}</span><span class="dr-val green">£${tR.toFixed(2)}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Gross profit${info('Revenue minus cost of sold items for this period. Overheads not included in period breakdown.')}</span><span class="dr-val ${tP>=0?'green':'red'}">£${tP.toFixed(2)}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Purchase costs${info('Total spent buying items in this period.')}</span><span class="dr-val">£${tC.toFixed(2)}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Avg sale price${info('Average of all sale prices in this period.')}</span><span class="dr-val">${sold.length?'£'+(tR/sold.length).toFixed(2):'—'}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Avg profit/item${info('Average profit per sold item in this period.')}</span><span class="dr-val">${sold.length?'£'+(tP/sold.length).toFixed(2):'—'}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Sales below ${pct}% markup${info('Count of sales where the markup on cost was below your '+pct+'% target.')}</span><span class="dr-val" style="color:var(--amber)">${belowTarget}</span></div>`;
+}
+
+// ── SYNC DASHBOARD TO EXCEL ───────────────────────────────────────────────────
+async function syncDashboardToExcel(){
+  setSyncing(true);
+  try{
+    const st=calcStats();
+    const pct=settings.minProfitPct||35;
+    const f=v=>parseFloat(v.toFixed(2));
+    const rows=[
+      ['Product Tracker — Dashboard','Last synced: '+new Date().toLocaleString('en-GB')],
+      [''],
+      ['SALES & PROFIT',''],
+      ['Total items bought',st.totalItems],
+      ['Items sold',st.soldCount],
+      ['Revenue (sold items)',f(st.revenue)],
+      ['COGS (cost of sold items)',f(st.cogsItems)],
+      ['Gross profit',f(st.grossProfit)],
+      ['Accessories overhead',f(st.accCost)],
+      ['Tools overhead',f(st.toolCost)],
+      ['Net profit',f(st.netProfit)],
+      [''],
+      ['AVERAGES',''],
+      ['Avg sale price',f(st.avgSalePrice)],
+      ['Avg buy price',f(st.avgBuyPrice)],
+      ['Avg markup %',f(st.avgMarkup)],
+      ['Avg profit per sale',f(st.avgProfit)],
+      ['Best sale profit',f(st.maxProfit)],
+      ['Worst sale profit',f(st.minProfit)],
+      [''],
+      ['STOCK',''],
+      ['Items in stock',st.stockCount],
+      ['Stock value (at cost)',f(st.stockValue)],
+      ['Est. stock sell value ('+pct+'% markup)',f(st.stockMinSellValue)],
+      [''],
+      ['BY STATUS',''],
+      ...Object.entries(st.byStatus).map(([s,c])=>[s,c]),
+    ];
+    // Ensure Dashboard sheet exists
+    const sheets=await excelApi('GET','/worksheets');
+    const existing=sheets.value.find(s=>s.name==='Dashboard');
+    if(!existing){await excelApi('POST','/worksheets',{name:'Dashboard'});}
+    // Clear old content and write new
+    const ec=columnLetter(2);const er=rows.length;
+    await excelApi('PATCH',`/worksheets/Dashboard/range(address='A1:B${er}')`,{values:rows});
+    toast('Dashboard synced to Excel!','success');setSyncing(false);
+  }catch(e){setSyncing(false,true);toast('Sync failed: '+e.message,'error');}
 }
 
 // ── CALCULATOR ────────────────────────────────────────────────────────────────
@@ -1233,7 +1339,16 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.5 — Switched to markup on cost (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.0 — Dashboard &amp; Reports overhaul (current)</p>
+          <p style="color:var(--text2)">• Dashboard simplified to advertised listings monitor only<br>
+          • Reports tab is now the single source of truth — all figures calculated live from Products, Accessories &amp; Tools sheets<br>
+          • Net profit = revenue from sold items − cost of sold items (COGS) − accessories overhead − tools overhead<br>
+          • Added ⓘ info icons on every metric explaining what it means and how it is calculated<br>
+          • All references to "Vacuums" replaced with "Items"<br>
+          • "Sync to Excel" button in Reports writes clean calculated figures back to the Dashboard sheet<br>
+          • Period charts now correctly filter sold items by status</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.5 — Switched to markup on cost</p>
           <p style="color:var(--text2)">• Replaced fixed £ minimum profit with a profit margin % (default 35%)<br>
           • Min sell price formula: cost × (1 + markup%) so that profit equals your target % of what you paid<br>
           • ⚠ warning in Products table now triggers when actual margin is below target<br>
