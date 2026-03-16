@@ -1229,22 +1229,27 @@ function drawReportCharts(){
   const bwCtx=document.getElementById('chart-bestworst');
   if(bwCtx){reportCharts['chart-bestworst']=new Chart(bwCtx,{type:'bar',data:{labels:bwLabels,datasets:[{data:bwData,backgroundColor:bwColors.map(c=>c+'55'),borderColor:bwColors,borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'£'+v}}}}});}
 
-  // Period summary
+  // Period summary — for all-time use calcStats() to match top cards exactly
+  // For specific periods use date-filtered arrays
   const pct=settings.minProfitPct||35;
-  const tR=sold.reduce((a,r)=>a+parseFloat(r.Sale_price||0),0);
-  const tP=sold.reduce((a,r)=>a+parseFloat(r.Profit||0),0);
-  const tC=purchased.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
-  const belowTarget=sold.filter(r=>{const p=parseFloat(r.Profit||0);const c=parseFloat(r.Purchase_Price||0);return p>0&&c>0&&(p/c)*100<pct;}).length;
+  const st2=isAllTime?calcStats():null;
+  const sumSold=isAllTime?st2.sold:sold;
+  const sumPurchased=isAllTime?rowsToObjects(sheetData.Product,true):purchased;
+  const tR=sumSold.reduce((a,r)=>a+parseFloat(r.Sale_price||0),0);
+  const tP=sumSold.reduce((a,r)=>a+parseFloat(r.Profit||0),0);
+  const tC=sumPurchased.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
+  const belowTarget=sumSold.filter(r=>{const p=parseFloat(r.Profit||0);const c=parseFloat(r.Purchase_Price||0);return p>0&&c>0&&(p/c)*100<pct;}).length;
+  const periodLabel=isAllTime?'All time':(activePreset==='custom'?'Custom period':activePreset.replace(/_/g,' '));
   const sumEl=document.getElementById('rpt-period-summary');
-  if(sumEl)sumEl.innerHTML=`<h3>Period summary</h3>
-    <div class="dash-row"><span style="display:flex;align-items:center">Items sold${info('Count of sold items in this period.')}</span><span class="dr-val">${sold.length}</span></div>
-    <div class="dash-row"><span style="display:flex;align-items:center">Items purchased${info('Count of items bought in this period.')}</span><span class="dr-val">${purchased.length}</span></div>
+  if(sumEl)sumEl.innerHTML=`<h3>Period summary — ${periodLabel}</h3>
+    <div class="dash-row"><span style="display:flex;align-items:center">Items sold${info('Count of sold items in this period. For All time this matches the top summary cards exactly.')}</span><span class="dr-val">${sumSold.length}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Items purchased${info('Count of items bought in this period.')}</span><span class="dr-val">${sumPurchased.length}</span></div>
     <div class="dash-row"><span style="display:flex;align-items:center">Revenue${info('Total sale prices in this period.')}</span><span class="dr-val green">£${tR.toFixed(2)}</span></div>
-    <div class="dash-row"><span style="display:flex;align-items:center">Gross profit${info('Revenue minus cost of sold items for this period. Overheads not included in period breakdown.')}</span><span class="dr-val ${tP>=0?'green':'red'}">£${tP.toFixed(2)}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Gross profit${info('Revenue minus cost of sold items. Overheads not included in period breakdown.')}</span><span class="dr-val ${tP>=0?'green':'red'}">£${tP.toFixed(2)}</span></div>
     <div class="dash-row"><span style="display:flex;align-items:center">Purchase costs${info('Total spent buying items in this period.')}</span><span class="dr-val">£${tC.toFixed(2)}</span></div>
-    <div class="dash-row"><span style="display:flex;align-items:center">Avg sale price${info('Average of all sale prices in this period.')}</span><span class="dr-val">${sold.length?'£'+(tR/sold.length).toFixed(2):'—'}</span></div>
-    <div class="dash-row"><span style="display:flex;align-items:center">Avg profit/item${info('Average profit per sold item in this period.')}</span><span class="dr-val">${sold.length?'£'+(tP/sold.length).toFixed(2):'—'}</span></div>
-    <div class="dash-row"><span style="display:flex;align-items:center">Sales below ${pct}% markup${info('Count of sales where the markup on cost was below your '+pct+'% target.')}</span><span class="dr-val" style="color:var(--amber)">${belowTarget}</span></div>`;
+    <div class="dash-row"><span style="display:flex;align-items:center">Avg sale price${info('Average of all sale prices in this period.')}</span><span class="dr-val">${sumSold.length?'£'+(tR/sumSold.length).toFixed(2):'—'}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Avg profit/item${info('Average profit per sold item in this period.')}</span><span class="dr-val">${sumSold.length?'£'+(tP/sumSold.length).toFixed(2):'—'}</span></div>
+    <div class="dash-row"><span style="display:flex;align-items:center">Sales below ${pct}% markup${info('Count of sales where markup on cost was below your '+pct+'% target.')}</span><span class="dr-val" style="color:var(--amber)">${belowTarget}</span></div>`;
 }
 
 // ── SYNC DASHBOARD TO EXCEL ───────────────────────────────────────────────────
@@ -1364,7 +1369,12 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.3 — Charts blank fix (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.4 — Load speed + period summary (current)</p>
+          <p style="color:var(--text2)">• Removed Dashboard sheet from page load — faster load (one fewer API call)<br>
+          • All time period summary now uses calcStats() so it matches the top summary cards exactly<br>
+          • Period label shown in summary heading</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.3 — Charts blank fix</p>
           <p style="color:var(--text2)">• Fixed charts showing blank for all periods — items with no sale/purchase date were causing silent crashes in chart grouping; now skipped gracefully</p>
 
           <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.2 — All time filter fix</p>
