@@ -339,7 +339,7 @@ function loadColConfig(){
   return DEFAULT_COLS.map(c=>({...c}));
 }
 function saveColConfig(){localStorage.setItem('pt_cols',JSON.stringify(colConfig));}
-function loadSettings(){try{const s=localStorage.getItem('pt_settings');if(s)return JSON.parse(s);}catch{}return{minProfit:30,notifEnabled:false};}
+function loadSettings(){try{const s=localStorage.getItem('pt_settings');if(s)return JSON.parse(s);}catch{}return{minProfitPct:35,notifEnabled:false};}
 function saveSettings(){localStorage.setItem('pt_settings',JSON.stringify(settings));}
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
@@ -412,7 +412,15 @@ function rowsToObjects(rows,useFixedHeaders){
 }
 function badge(status,id){const s=(status||'').toString().trim().toLowerCase();let cls='badge-other';if(s==='sold')cls='badge-sold';else if(s==='received')cls='badge-received';else if(s==='purchased')cls='badge-purchased';else if(s==='advertised')cls='badge-advertised';else if(s==='posted to buyer')cls='badge-posted';else if(s==='received by buyer')cls='badge-delivered';else if(s==='defect')cls='badge-defect';if(!s||s==='0')return'';return`<span class="badge ${cls}" onclick="event.stopPropagation();openStatusDropdown(event,'${id}')" title="Click to change status">${status}</span>`;}
 function fmtCurrency(v){const n=parseFloat(v);return isNaN(n)||v===''||v===null?'—':'£'+n.toFixed(2);}
-function profitHtml(v){const n=parseFloat(v);if(isNaN(n)||v===''||v===null)return'<span class="profit-zero">—</span>';const warn=n>0&&n<settings.minProfit;const cls=warn?'profit-warn':n>0?'profit-pos':n<0?'profit-neg':'profit-zero';return`<span class="${cls}" title="${warn?'Below minimum profit target':''}">${n>0?'+':''}£${n.toFixed(2)}${warn?' ⚠':''}</span>`;}
+function profitHtml(v,salePrice){
+  const n=parseFloat(v);if(isNaN(n)||v===''||v===null)return'<span class="profit-zero">—</span>';
+  const sp=parseFloat(salePrice)||0;
+  const margin=sp>0?(n/sp)*100:0;
+  const warn=n>0&&sp>0&&margin<settings.minProfitPct;
+  const cls=warn?'profit-warn':n>0?'profit-pos':n<0?'profit-neg':'profit-zero';
+  const title=warn?`Margin ${margin.toFixed(1)}% — below ${settings.minProfitPct}% target`:`Margin: ${sp>0?margin.toFixed(1)+'%':'no sale price'}`;
+  return`<span class="${cls}" title="${title}">${n>0?'+':''}£${n.toFixed(2)}${warn?' ⚠':''}</span>`;
+}
 function excelSerialToDate(s){return new Date(Date.UTC(1899,11,30)+s*86400000);}
 function fmtDate(v){if(!v||v===''||v===0||v==='0')return'—';const s=v.toString().trim();if(/^\d{5,6}$/.test(s)&&parseInt(s)>40000){const d=excelSerialToDate(parseInt(s));return isNaN(d)?s:d.toLocaleDateString('en-GB');}if(s.includes('T')||(s.includes('-')&&s.length>=10)){const d=new Date(s);return isNaN(d)?s:d.toLocaleDateString('en-GB');}if(/^\d{2}\/\d{2}\/\d{4}$/.test(s))return s;return s;}
 function parseDateValue(v){if(!v||v===''||v===0||v==='0')return null;const s=v.toString().trim();if(/^\d{5,6}$/.test(s)&&parseInt(s)>40000)return excelSerialToDate(parseInt(s));if(s.includes('T')||(s.includes('-')&&s.length>=10)){const d=new Date(s);return isNaN(d)?null:d;}if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)){const[dd,mm,yyyy]=s.split('/');return new Date(`${yyyy}-${mm}-${dd}`);}return null;}
@@ -559,7 +567,7 @@ function renderDashboard(){
     const d=parseDateValue(r['Advertised Date']);const days=d?Math.floor((new Date()-d)/(1000*60*60*24)):null;
     const cls=days===null?'green-item':days>=10?'red-item':days>=5?'amber-item':'green-item';
     const cost=parseFloat(r.Purchase_Price)||0;
-    const minSell=(cost+settings.minProfit).toFixed(2);
+    const pct=settings.minProfitPct||35;const minSell=pct>0&&pct<100?(cost/(1-pct/100)).toFixed(2):(cost*1.35).toFixed(2);
     const advDateStr=d?d.toLocaleDateString('en-GB'):'—';
     return`<div class="adv-item ${cls}" style="flex-wrap:wrap;gap:6px">
       <div style="display:flex;flex-direction:column;gap:2px;min-width:160px">
@@ -616,7 +624,7 @@ function renderDashboard(){
         <div class="dash-row"><span>Max profit</span><span class="dr-val green">${f(get('Max Profit on sale'))}</span></div>
         <div class="dash-row"><span>Min profit</span><span class="dr-val ${pc(get('Min Profit on sale'))}">${f(get('Min Profit on sale'))}</span></div>
         <div class="dash-row"><span>Avg profit/sale</span><span class="dr-val">${f(get('Avg Profit Per Sale'))}</span></div>
-        <div class="dash-row"><span>Min profit target</span><span class="dr-val">£${settings.minProfit} <button class="btn-edit" onclick="openSettingsModal()" style="margin-left:4px">edit</button></span></div>
+        <div class="dash-row"><span>Min margin target</span><span class="dr-val">${settings.minProfitPct||35}% <button class="btn-edit" onclick="openSettingsModal()" style="margin-left:4px">edit</button></span></div>
       </div>
       <div class="dash-section"><h3>Stock</h3>
         <div class="dash-row"><span>Bought</span><span class="dr-val">${n(get('Products Bought'))}</span></div>
@@ -650,10 +658,10 @@ function openSettingsModal(){
   overlay.innerHTML=`<div class="modal" style="max-width:560px">
     <div class="modal-header"><h3>Settings</h3><button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="modal-body">
-      <div class="form-section"><div class="form-section-title">Profit target</div>
-        <div class="field"><label>Minimum profit warning threshold (£)</label>
-          <input id="set_minprofit" type="number" step="1" value="${settings.minProfit}">
-          <span style="font-size:12px;color:var(--text3);margin-top:4px">Profits below this show a ⚠ warning in the Products tab</span>
+      <div class="form-section"><div class="form-section-title">Profit margin target</div>
+        <div class="field"><label>Minimum profit margin (%)</label>
+          <input id="set_minprofit" type="number" step="1" min="1" max="99" value="${settings.minProfitPct||35}">
+          <span style="font-size:12px;color:var(--text3);margin-top:4px">Sales with a margin below this % will show a ⚠ warning. Default 35%. Formula: cost ÷ (1 − margin%) = min sell price.</span>
         </div>
       </div>
       <div class="form-section"><div class="form-section-title">Manage statuses</div>
@@ -710,7 +718,7 @@ function statusAdd(){
 }
 
 async function saveSettingsFromModal(){
-  settings.minProfit=parseFloat(document.getElementById('set_minprofit').value)||30;
+  settings.minProfitPct=parseFloat(document.getElementById('set_minprofit').value)||35;
   saveSettings();saveStatuses();
   // Write statuses to Excel Settings sheet
   try{
@@ -752,7 +760,7 @@ function renderProductsTable(){
       const v=r[c.k];
       if(c.k==='Status')return`<td>${badge(v,r.Internal_ID)}</td>`;
       if(c.k==='Purchase_Price'||c.k==='Sale_price')return`<td>${fmtCurrency(v)}</td>`;
-      if(c.k==='Profit')return`<td>${profitHtml(v)}</td>`;
+      if(c.k==='Profit')return`<td>${profitHtml(v,r.Sale_price)}</td>`;
       if(c.k==='Purchase_date'||c.k==='Sale_date')return`<td>${fmtDate(v)}</td>`;
       if(c.k==='Advertised Date')return`<td class="${ac}">${fmtDate(v)}</td>`;
       if(c.k==='Cleaned'||c.k==='Ready_to_go')return`<td style="text-align:center">${v==='Yes'||v===true?'✓':''}</td>`;
@@ -1142,7 +1150,7 @@ function drawReportCharts(){
   if(bwCtx){reportCharts['chart-bestworst']=new Chart(bwCtx,{type:'bar',data:{labels:bwLabels,datasets:[{data:bwData,backgroundColor:bwColors.map(c=>c+'55'),borderColor:bwColors,borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'£'+v}}}}});}
 
   const tR=sold.reduce((a,r)=>a+parseFloat(r.Sale_price||0),0),tP=sold.reduce((a,r)=>a+parseFloat(r.Profit||0),0),tC=purchased.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
-  const belowTarget=sold.filter(r=>parseFloat(r.Profit||0)<settings.minProfit&&parseFloat(r.Profit||0)>0).length;
+  const belowTarget=sold.filter(r=>{const p=parseFloat(r.Profit||0);const sp=parseFloat(r.Sale_price||0);return p>0&&sp>0&&(p/sp)*100<(settings.minProfitPct||35);}).length;
   document.getElementById('rpt-summary').innerHTML=`<h3>Summary</h3>
     <div class="dash-row"><span>Units sold</span><span class="dr-val">${sold.length}</span></div>
     <div class="dash-row"><span>Units purchased</span><span class="dr-val">${purchased.length}</span></div>
@@ -1151,7 +1159,7 @@ function drawReportCharts(){
     <div class="dash-row"><span>Purchase costs</span><span class="dr-val">£${tC.toFixed(2)}</span></div>
     <div class="dash-row"><span>Avg sale price</span><span class="dr-val">${sold.length?'£'+(tR/sold.length).toFixed(2):'—'}</span></div>
     <div class="dash-row"><span>Avg profit/sale</span><span class="dr-val">${sold.length?'£'+(tP/sold.length).toFixed(2):'—'}</span></div>
-    <div class="dash-row"><span>Sales below £${settings.minProfit} target</span><span class="dr-val" style="color:var(--amber)">${belowTarget}</span></div>`;
+    <div class="dash-row"><span>Sales below ${settings.minProfitPct||35}% margin</span><span class="dr-val" style="color:var(--amber)">${belowTarget}</span></div>`;
 }
 
 // ── CALCULATOR ────────────────────────────────────────────────────────────────
@@ -1161,16 +1169,16 @@ function renderCalculator(){
       <h3>Break-even &amp; profit calculator</h3>
       <div class="calc-grid">
         <div class="field"><label>Purchase price (£)</label><input id="c_buy" type="number" step="0.01" placeholder="e.g. 45.00" oninput="calcUpdate()"></div>
-        <div class="field"><label>Target profit (£)</label><input id="c_target" type="number" step="1" value="${settings.minProfit}" oninput="calcUpdate()"></div>
+        <div class="field"><label>Target margin (%)</label><input id="c_target" type="number" step="1" min="1" max="99" value="${settings.minProfitPct||35}" oninput="calcUpdate()"></div>
         <div class="field"><label>Sale price (£) — optional</label><input id="c_sell" type="number" step="0.01" placeholder="e.g. 110.00" oninput="calcUpdate()"></div>
       </div>
       <div class="calc-grid" id="calc-results"></div>
-      <p style="font-size:12px;color:var(--text3);margin-top:1rem">Your minimum profit target is set to £${settings.minProfit}. <button class="btn-edit" onclick="openSettingsModal()">Change</button></p>
+      <p style="font-size:12px;color:var(--text3);margin-top:1rem">Your minimum margin target is ${settings.minProfitPct||35}%. <button class="btn-edit" onclick="openSettingsModal()">Change</button></p>
     </div>
     <div class="calc-card">
       <h3>Stock profitability — unsold items</h3>
       <div class="table-outer" style="max-height:400px"><table>
-        <thead><tr><th>ID</th><th>Make / Model</th><th>Status</th><th>Cost</th><th>Min sell price</th><th>To break even</th></tr></thead>
+        <thead><tr><th>ID</th><th>Make / Model</th><th>Status</th><th>Cost</th><th>Min sell (${settings.minProfitPct||35}% margin)</th><th>Break even</th></tr></thead>
         <tbody id="stock-table-body"></tbody>
       </table></div>
     </div>`;
@@ -1179,19 +1187,19 @@ function renderCalculator(){
 
 function calcUpdate(){
   const buy=parseFloat(document.getElementById('c_buy')?.value)||0;
-  const target=parseFloat(document.getElementById('c_target')?.value)||settings.minProfit;
+  const target=parseFloat(document.getElementById('c_target')?.value)||settings.minProfitPct||35;
   const sell=parseFloat(document.getElementById('c_sell')?.value)||0;
   const breakEven=buy;
-  const minSell=buy+target;
+  const minSell=target>0&&target<100?buy/(1-target/100):buy;
   const actualProfit=sell?sell-buy:null;
-  const margin=sell&&sell>0?((sell-buy)/sell*100):null;
+  const actualMargin=sell&&sell>0?((sell-buy)/sell*100):null;
   const res=document.getElementById('calc-results');if(!res)return;
   res.innerHTML=`
     <div class="calc-result"><div class="cr-label">Break-even price</div><div class="cr-value">£${breakEven.toFixed(2)}</div></div>
-    <div class="calc-result"><div class="cr-label">Min sell for £${target} profit</div><div class="cr-value green">£${minSell.toFixed(2)}</div></div>
+    <div class="calc-result"><div class="cr-label">Min sell for ${target}% margin</div><div class="cr-value green">£${minSell.toFixed(2)}</div></div>
     ${actualProfit!==null?`
-    <div class="calc-result"><div class="cr-label">Actual profit</div><div class="cr-value ${actualProfit>=target?'green':actualProfit>0?'amber':'red'}">£${actualProfit.toFixed(2)}</div></div>
-    <div class="calc-result"><div class="cr-label">Profit margin</div><div class="cr-value ${actualProfit>=target?'green':actualProfit>0?'amber':'red'}">${margin.toFixed(1)}%</div></div>`:''}`;
+    <div class="calc-result"><div class="cr-label">Actual profit</div><div class="cr-value ${actualMargin>=target?'green':actualProfit>0?'amber':'red'}">£${actualProfit.toFixed(2)}</div></div>
+    <div class="calc-result"><div class="cr-label">Actual margin</div><div class="cr-value ${actualMargin>=target?'green':actualProfit>0?'amber':'red'}">${actualMargin.toFixed(1)}%</div></div>`:''}`;
 }
 
 function renderStockTable(){
@@ -1200,7 +1208,7 @@ function renderStockTable(){
   const tbody=document.getElementById('stock-table-body');if(!tbody)return;
   tbody.innerHTML=unsold.length?unsold.map(r=>{
     const cost=parseFloat(r.Purchase_Price)||0;
-    const minSell=(cost+settings.minProfit).toFixed(2);
+    const pct=settings.minProfitPct||35;const minSell=pct>0&&pct<100?(cost/(1-pct/100)).toFixed(2):(cost*1.35).toFixed(2);
     return`<tr>
       <td class="mono">${r.Internal_ID}</td>
       <td>${r.Make||''} ${r.Model||''}</td>
@@ -1224,7 +1232,13 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.3 — Settings button (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.4 — Profit margin % (current)</p>
+          <p style="color:var(--text2)">• Replaced fixed £ minimum profit with a profit margin % (default 35%)<br>
+          • Min sell price formula: cost ÷ (1 − margin%) so that profit/sale price equals your target %<br>
+          • ⚠ warning in Products table now triggers when actual margin is below target<br>
+          • Calculator, stock table, advertised cards and reports all updated</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.3 — Settings button</p>
           <p style="color:var(--text2)">• Added ⚙ Settings button to the top bar — accessible from any tab</p>
 
           <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.2 — Status manager + dashboard improvements</p>
