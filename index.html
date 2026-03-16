@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product Tracker</title>
+<script src="https://unpkg.com/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f7f6f3;--surface:#fff;--surface2:#f0efe9;--border:#e2e0d8;--border2:#cccac0;--text:#1a1916;--text2:#6b6860;--text3:#9e9b93;--green:#16a34a;--green-bg:#f0fdf4;--amber:#d97706;--amber-bg:#fffbeb;--red:#dc2626;--red-bg:#fef2f2;--blue:#2563eb;--blue-bg:#eff6ff;--radius:8px;--radius-lg:12px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+#auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem}
+.auth-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:3rem 2.5rem;max-width:420px;width:100%;text-align:center}
+.auth-card .logo{font-size:2.5rem;margin-bottom:1rem}
+.auth-card h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
+.auth-card p{color:var(--text2);font-size:13px;line-height:1.6;margin-bottom:2rem}
+.btn-ms{display:inline-flex;align-items:center;gap:10px;background:#0078d4;color:#fff;border:none;border-radius:var(--radius);padding:12px 24px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%;justify-content:center;transition:background .15s}
+.btn-ms:hover{background:#106ebe}
+.auth-note{margin-top:1.5rem;font-size:12px;color:var(--text3);line-height:1.5}
+#file-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem}
+.file-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2.5rem;max-width:500px;width:100%}
+.file-card h2{font-size:18px;font-weight:600;margin-bottom:.5rem}
+.file-card p{color:var(--text2);font-size:13px;margin-bottom:1.5rem}
+.file-input-row{display:flex;gap:8px;margin-bottom:1rem}
+.file-input-row input{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text)}
+.btn-primary{background:var(--text);color:#fff;border:none;border-radius:var(--radius);padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:opacity .15s;white-space:nowrap}
+.btn-primary:hover{opacity:.85}
+.btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s}
+.btn-secondary:hover{background:var(--surface2)}
+.file-hint{font-size:12px;color:var(--text3)}
+.status-msg{margin-top:1rem;padding:10px 14px;border-radius:var(--radius);font-size:13px}
+.status-msg.info{background:var(--blue-bg);color:var(--blue)}
+.status-msg.error{background:var(--red-bg);color:var(--red)}
+.status-msg.success{background:var(--green-bg);color:var(--green)}
+#app{display:none;min-height:100vh}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;gap:1rem;height:52px;position:sticky;top:0;z-index:50}
+.topbar-brand{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.topbar-brand svg{flex-shrink:0}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.sync-indicator{font-size:12px;color:var(--text3);display:flex;align-items:center;gap:5px}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.sync-dot.syncing{background:var(--amber);animation:pulse 1s infinite}
+.sync-dot.error{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.user-chip{font-size:12px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:4px 12px}
+.btn-signout{font-size:12px;color:var(--text2);background:none;border:1px solid var(--border);border-radius:var(--radius);padding:5px 10px;cursor:pointer;font-family:'DM Sans',sans-serif}
+.btn-signout:hover{background:var(--surface2)}
+.tabs-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;gap:0;overflow-x:auto;position:sticky;top:52px;z-index:40}
+.tab-btn{padding:12px 16px;font-size:13px;font-weight:500;color:var(--text2);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;transition:color .15s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--text);border-bottom-color:var(--text)}
+.content{padding:1.5rem;max-width:1400px;margin:0 auto}
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:1.5rem}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.25rem}
+.dash-card .dc-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+.dash-card .dc-value{font-size:22px;font-weight:600}
+.dash-card .dc-value.green{color:var(--green)}
+.dash-card .dc-value.red{color:var(--red)}
+.dash-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:1rem}
+.dash-section h3{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:1rem}
+.dash-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
+.dash-row:last-child{border-bottom:none}
+.dash-row .dr-val{font-weight:500;font-family:'DM Mono',monospace}
+.dash-row .dr-val.green{color:var(--green)}
+.dash-row .dr-val.red{color:var(--red)}
+.adv-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);margin-bottom:6px;font-size:13px}
+.adv-item.red-item{background:var(--red-bg);border-left:3px solid var(--red)}
+.adv-item.amber-item{background:var(--amber-bg);border-left:3px solid var(--amber)}
+.adv-item.green-item{background:var(--green-bg);border-left:3px solid var(--green)}
+.adv-days{font-size:11px;color:var(--text3);margin-left:auto;font-family:'DM Mono',monospace}
+.toolbar{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+.toolbar input[type=text],.toolbar select{height:34px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--text)}
+.toolbar input[type=text]{min-width:180px}
+.toolbar input[type=text]:focus,.toolbar select:focus{outline:none;border-color:var(--border2)}
+.table-outer{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);max-height:calc(100vh - 200px);overflow-y:auto}
+.table-outer table{width:100%;border-collapse:collapse;font-size:13px}
+.table-outer thead th{position:sticky;top:0;z-index:10;text-align:left;padding:9px 12px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);background:var(--surface2);white-space:nowrap;cursor:pointer;user-select:none}
+.table-outer thead th:hover{color:var(--text)}
+.table-outer thead th .sa{font-size:10px;margin-left:3px;opacity:.4}
+.table-outer thead th.sort-asc .sa::after{content:'▲';opacity:1}
+.table-outer thead th.sort-desc .sa::after{content:'▼';opacity:1}
+.table-outer thead th:not(.sort-asc):not(.sort-desc) .sa::after{content:'⇅'}
+td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tbody tr{cursor:pointer;transition:background .1s}
+tbody tr:hover td{background:var(--bg)}
+.mono{font-family:'DM Mono',monospace;font-size:12px}
+.empty-row td{text-align:center;color:var(--text3);padding:3rem;cursor:default}
+/* checkbox col */
+.cb-col{width:36px;text-align:center!important;padding:9px 6px!important}
+.cb-col input{cursor:pointer;accent-color:var(--blue)}
+.row-selected td{background:#eff6ff!important}
+.bulk-bar{display:none;align-items:center;gap:10px;background:var(--blue-bg);border:1px solid #bfdbfe;border-radius:var(--radius);padding:8px 14px;margin-bottom:10px;font-size:13px}
+.bulk-bar.visible{display:flex}
+.bulk-bar strong{color:var(--blue)}
+/* badges + status dropdown */
+.badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600;cursor:pointer;position:relative}
+.badge-sold{background:var(--green-bg);color:var(--green)}
+.badge-received{background:#f0f9ff;color:#0369a1}
+.badge-purchased{background:#fdf4ff;color:#7e22ce}
+.badge-advertised{background:var(--blue-bg);color:var(--blue)}
+.badge-posted{background:var(--amber-bg);color:var(--amber)}
+.badge-delivered{background:#dcfce7;color:#166534}
+.badge-defect{background:var(--red-bg);color:var(--red)}
+.badge-other{background:var(--surface2);color:var(--text2)}
+.status-dropdown{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:300;min-width:160px;overflow:hidden}
+.status-dropdown-item{padding:8px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)}
+.status-dropdown-item:last-child{border-bottom:none}
+.status-dropdown-item:hover{background:var(--bg)}
+.profit-pos{color:var(--green);font-weight:500;font-family:'DM Mono',monospace}
+.profit-neg{color:var(--red);font-weight:500;font-family:'DM Mono',monospace}
+.profit-zero{color:var(--text3);font-family:'DM Mono',monospace}
+.adv-red{background:#fef2f2!important}
+.adv-amber{background:#fffbeb!important}
+.adv-green{background:#f0fdf4!important}
+/* low profit warning */
+.profit-warn{color:var(--amber);font-weight:500;font-family:'DM Mono',monospace}
+.btn-edit{padding:3px 10px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;font-size:12px;color:var(--text2);font-family:'DM Sans',sans-serif}
+.btn-edit:hover{background:var(--surface2);color:var(--text)}
+.btn-danger{padding:3px 10px;border:1px solid #fecaca;border-radius:6px;background:none;cursor:pointer;font-size:12px;color:var(--red);font-family:'DM Sans',sans-serif}
+.btn-danger:hover{background:var(--red-bg)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem;overflow-y:auto}
+.modal{background:var(--surface);border-radius:var(--radius-lg);border:1px solid var(--border);width:min(720px,100%)}
+.modal-header{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.modal-header h3{font-size:16px;font-weight:600}
+.modal-close{background:none;border:none;cursor:pointer;font-size:18px;color:var(--text3);padding:4px;line-height:1}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:1.5rem;max-height:70vh;overflow-y:auto}
+.modal-footer{padding:1rem 1.5rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.modal-footer-actions{display:flex;gap:8px;margin-left:auto}
+.form-section{margin-bottom:1.5rem}
+.form-section-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:.75rem;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-grid.cols3{grid-template-columns:1fr 1fr 1fr}
+.field{display:flex;flex-direction:column;gap:4px}
+.field.full{grid-column:1/-1}
+.field label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.field input,.field select,.field textarea{padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);transition:border-color .15s}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--border2);background:var(--surface)}
+.field input[readonly]{opacity:.6;cursor:not-allowed}
+.field textarea{resize:vertical;min-height:70px}
+/* notes expand */
+.notes-cell{max-width:200px;overflow:hidden;text-overflow:ellipsis;color:var(--text2);cursor:pointer;transition:max-width .2s}
+.notes-cell.expanded{max-width:400px;white-space:normal}
+.strategy-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:1rem;overflow:hidden}
+.strat-header{padding:1rem 1.25rem;background:var(--surface2);border-bottom:1px solid var(--border)}
+.strat-header h3{font-size:14px;font-weight:600}
+.strat-table{width:100%;border-collapse:collapse;font-size:13px}
+.strat-table th{padding:8px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);background:var(--surface)}
+.strat-table td{padding:9px 14px;border-bottom:1px solid var(--border)}
+.strat-table tr:last-child td{border-bottom:none}
+.strat-table tr:hover td{background:var(--bg)}
+.loading{display:flex;align-items:center;justify-content:center;padding:4rem;color:var(--text3);gap:10px}
+.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--text2);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast-container{position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--text);color:#fff;padding:10px 16px;border-radius:var(--radius);font-size:13px;font-weight:500;animation:slide-in .2s ease;max-width:320px}
+.toast.success{background:var(--green)}
+.toast.error{background:var(--red)}
+.toast.warn{background:var(--amber)}
+@keyframes slide-in{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+/* Reports */
+.report-controls{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:1.25rem;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.report-controls .field{min-width:140px}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+.chart-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem}
+.chart-card h3{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:1rem}
+.chart-card canvas{max-height:220px}
+/* Break-even calculator */
+.calc-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;margin-bottom:1rem}
+.calc-card h3{font-size:15px;font-weight:600;margin-bottom:1.25rem}
+.calc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:1.25rem}
+.calc-result{background:var(--surface2);border-radius:var(--radius);padding:1rem 1.25rem;display:flex;flex-direction:column;gap:4px}
+.calc-result .cr-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
+.calc-result .cr-value{font-size:22px;font-weight:600}
+.calc-result .cr-value.green{color:var(--green)}
+.calc-result .cr-value.red{color:var(--red)}
+.calc-result .cr-value.amber{color:var(--amber)}
+/* Column manager */
+.col-list{flex:1;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.col-list-header{padding:8px 12px;background:var(--surface2);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);border-bottom:1px solid var(--border)}
+.col-list-body{max-height:360px;overflow-y:auto}
+.col-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px;cursor:grab}
+.col-item:last-child{border-bottom:none}
+.col-item:hover{background:var(--bg)}
+.col-item.dragging{opacity:.4;background:var(--blue-bg)}
+.col-item.drag-over{border-top:2px solid var(--blue)}
+.col-drag-handle{color:var(--text3);cursor:grab;font-size:16px;line-height:1}
+.col-item input[type=checkbox]{accent-color:var(--blue);width:15px;height:15px;cursor:pointer;flex-shrink:0}
+.col-label-input{flex:1;border:none;background:transparent;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);padding:2px 4px;border-radius:4px}
+.col-label-input:focus{outline:none;background:var(--surface2)}
+.col-key{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;white-space:nowrap}
+.col-manager-hint{font-size:12px;color:var(--text3);margin-top:.75rem;line-height:1.5}
+/* mobile quick-add */
+.quick-add-fab{display:none;position:fixed;bottom:1.5rem;right:1.5rem;z-index:100;width:52px;height:52px;border-radius:50%;background:var(--text);color:#fff;border:none;font-size:24px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);align-items:center;justify-content:center}
+@media(max-width:700px){
+  .chart-grid{grid-template-columns:1fr}.chart-grid3{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}.form-grid.cols3{grid-template-columns:1fr}
+  .dash-grid{grid-template-columns:1fr 1fr}
+  .topbar{padding:0 1rem}.tabs-bar{padding:0 1rem}
+  .modal-overlay{padding:.5rem}
+  .report-controls{flex-direction:column}
+  .quick-add-fab{display:flex}
+  .toolbar .btn-primary{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="logo">🔍</div>
+    <h1>Product Tracker</h1>
+    <p>Sign in with your Microsoft account to connect to your OneDrive Excel spreadsheet.</p>
+    <button class="btn-ms" id="signin-btn" onclick="signIn()">
+      <svg width="20" height="20" viewBox="0 0 21 21" fill="none"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>
+      Sign in with Microsoft
+    </button>
+    <p class="auth-note">Your data stays in your own OneDrive account.</p>
+  </div>
+</div>
+
+<div id="file-screen" style="display:none">
+  <div class="file-card">
+    <h2>Connect your spreadsheet</h2>
+    <p>Enter the path to your Products.xlsx in OneDrive.</p>
+    <div class="file-input-row">
+      <input type="text" id="file-path-input" placeholder="Products.xlsx" value="Products.xlsx">
+      <button class="btn-primary" onclick="connectFile()">Connect</button>
+    </div>
+    <p class="file-hint">If it's in a folder: <strong>Folder/Products.xlsx</strong></p>
+    <div id="file-status"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Product Tracker
+    </div>
+    <div class="topbar-right">
+      <div class="sync-indicator"><div class="sync-dot" id="sync-dot"></div><span id="sync-label">Connected</span></div>
+      <div class="user-chip" id="user-chip"></div>
+      <button class="btn-signout" onclick="signOut()">Sign out</button>
+    </div>
+  </div>
+  <div class="tabs-bar">
+    <button class="tab-btn active" onclick="switchTab('dashboard',this)">Dashboard</button>
+    <button class="tab-btn" onclick="switchTab('products',this)">Products</button>
+    <button class="tab-btn" onclick="switchTab('accessories',this)">Accessories</button>
+    <button class="tab-btn" onclick="switchTab('tools',this)">Tools</button>
+    <button class="tab-btn" onclick="switchTab('strategy',this)">Strategy</button>
+    <button class="tab-btn" onclick="switchTab('reports',this)">Reports</button>
+    <button class="tab-btn" onclick="switchTab('calculator',this)">Calculator</button>
+  </div>
+  <div class="content">
+    <div id="tab-dashboard"></div>
+    <div id="tab-products" style="display:none"></div>
+    <div id="tab-accessories" style="display:none"></div>
+    <div id="tab-tools" style="display:none"></div>
+    <div id="tab-strategy" style="display:none"></div>
+    <div id="tab-reports" style="display:none"></div>
+    <div id="tab-calculator" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Mobile FAB -->
+<button class="quick-add-fab" onclick="openProductModal(null)" title="Quick add product">+</button>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const MSAL_CONFIG={auth:{clientId:"e079eda8-38fc-4c2a-a92b-6074d7c39ec0",authority:"https://login.microsoftonline.com/consumers",redirectUri:window.location.origin+window.location.pathname},cache:{cacheLocation:"localStorage",storeAuthStateInCookie:true},system:{allowNativeBroker:false}};
+const SCOPES=["Files.ReadWrite","User.Read"];
+const GRAPH="https://graph.microsoft.com/v1.0";
+const PRODUCT_STATUSES=["Purchased","Received","Advertised","Sold","Posted to buyer","Received By Buyer","Defect"];
+const PRODUCT_HEADERS=['Internal_ID','Item','Purchase_Platform','Order/Invoice_number','Status','Advertised Date','Purchase_Price','Purchase_date','Make','Model','Model_Code','Colour','Main_Unit_SN','Main_unit_void_sticker_SN','Battery_SN','Battery_Void_Sticker_SN','Motorised_Head_SN','Sale_Platform','Sold_To','Sale_date','Sale_price','Profit','Cleaned','Ready_to_go','Notes'];
+
+const DEFAULT_COLS=[
+  {k:'Internal_ID',l:'ID',v:true},{k:'Item',l:'Item',v:true},{k:'Make',l:'Make',v:true},
+  {k:'Model',l:'Model',v:true},{k:'Model_Code',l:'Code',v:true},{k:'Colour',l:'Colour',v:true},
+  {k:'Status',l:'Status',v:true},{k:'Purchase_Platform',l:'Buy From',v:true},
+  {k:'Order/Invoice_number',l:'Order #',v:false},{k:'Purchase_Price',l:'Cost',v:true},
+  {k:'Purchase_date',l:'Bought',v:true},{k:'Advertised Date',l:'Adv. Date',v:true},
+  {k:'Main_Unit_SN',l:'Main SN',v:false},{k:'Main_unit_void_sticker_SN',l:'Main Void SN',v:false},
+  {k:'Battery_SN',l:'Bat SN',v:false},{k:'Battery_Void_Sticker_SN',l:'Bat Void SN',v:false},
+  {k:'Motorised_Head_SN',l:'Head SN',v:false},{k:'Sale_Platform',l:'Sale Via',v:true},
+  {k:'Sold_To',l:'Sold To',v:true},{k:'Sale_date',l:'Sale Date',v:true},
+  {k:'Sale_price',l:'Sale £',v:true},{k:'Profit',l:'Profit',v:true},
+  {k:'Cleaned',l:'Clean',v:true},{k:'Ready_to_go',l:'Ready',v:true},{k:'Notes',l:'Notes',v:true}
+];
+
+let msalInstance,account,fileItemId;
+let sheetData={Product:[],Accessories:[],Tools:[],Dashboard:[],Strategy:[]};
+let productSort={col:null,dir:'asc'};
+let productSearch='',productFilter='';
+let reportCharts={};
+let selectedRows=new Set();
+let colConfig=loadColConfig();
+let settings=loadSettings();
+let dragSrcIdx=null;
+
+function loadColConfig(){try{const s=localStorage.getItem('pt_cols');if(s)return JSON.parse(s);}catch{}return DEFAULT_COLS.map(c=>({...c}));}
+function saveColConfig(){localStorage.setItem('pt_cols',JSON.stringify(colConfig));}
+function loadSettings(){try{const s=localStorage.getItem('pt_settings');if(s)return JSON.parse(s);}catch{}return{minProfit:30,notifEnabled:false};}
+function saveSettings(){localStorage.setItem('pt_settings',JSON.stringify(settings));}
+
+// ── AUTH ──────────────────────────────────────────────────────────────────────
+async function initMsal(){
+  msalInstance=new msal.PublicClientApplication(MSAL_CONFIG);
+  await msalInstance.initialize();
+  await msalInstance.handleRedirectPromise().catch(()=>{});
+  const accs=msalInstance.getAllAccounts();
+  if(accs.length>0){account=accs[0];msalInstance.setActiveAccount(account);const s=localStorage.getItem('vt_file_id');if(s){fileItemId=s;showApp();loadAllSheets();}else showFileScreen();}
+}
+async function signIn(){
+  const btn=document.getElementById('signin-btn');btn.textContent='Signing in…';btn.disabled=true;
+  try{const r=await msalInstance.loginPopup({scopes:SCOPES});account=r.account;msalInstance.setActiveAccount(account);const s=localStorage.getItem('vt_file_id');if(s){fileItemId=s;showApp();loadAllSheets();}else showFileScreen();}
+  catch(e){btn.innerHTML='<svg width="20" height="20" viewBox="0 0 21 21" fill="none"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg> Sign in with Microsoft';btn.disabled=false;if(!e.message.includes('user_cancelled'))toast('Sign-in failed: '+e.message,'error');}
+}
+function signOut(){localStorage.removeItem('vt_file_id');account=null;msalInstance.logoutPopup().catch(()=>{});document.getElementById('auth-screen').style.display='flex';document.getElementById('file-screen').style.display='none';document.getElementById('app').style.display='none';}
+async function getToken(){try{return(await msalInstance.acquireTokenSilent({scopes:SCOPES,account})).accessToken;}catch{return(await msalInstance.acquireTokenPopup({scopes:SCOPES})).accessToken;}}
+async function api(method,path,body){const t=await getToken();const res=await fetch(GRAPH+path,{method,headers:{'Authorization':'Bearer '+t,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'API error '+res.status);}if(res.status===204)return null;return res.json();}
+
+function showFileScreen(){document.getElementById('auth-screen').style.display='none';document.getElementById('file-screen').style.display='flex';document.getElementById('app').style.display='none';}
+function showApp(){document.getElementById('auth-screen').style.display='none';document.getElementById('file-screen').style.display='none';document.getElementById('app').style.display='block';document.getElementById('user-chip').textContent=account?.name||account?.username||'';}
+async function connectFile(){
+  const path=document.getElementById('file-path-input').value.trim()||'Products.xlsx';
+  const st=document.getElementById('file-status');st.innerHTML='<div class="status-msg info">Connecting…</div>';
+  try{const enc=path.split('/').map(encodeURIComponent).join('/');const item=await api('GET',`/me/drive/root:/${enc}`);fileItemId=item.id;localStorage.setItem('vt_file_id',fileItemId);st.innerHTML='<div class="status-msg success">Found! Loading…</div>';showApp();loadAllSheets();}
+  catch(e){st.innerHTML=`<div class="status-msg error">Could not find: ${e.message}</div>`;}
+}
+
+// ── EXCEL API ─────────────────────────────────────────────────────────────────
+const BASE=()=>`/me/drive/items/${fileItemId}/workbook`;
+async function excelApi(method,path,body){const t=await getToken();const res=await fetch(GRAPH+BASE()+path,{method,headers:{'Authorization':'Bearer '+t,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'Excel error '+res.status);}if(res.status===204)return null;return res.json();}
+async function readSheet(name){const r=await excelApi('GET',`/worksheets/${encodeURIComponent(name)}/usedRange`);return r.values||[];}
+async function writeRow(sheet,rowIndex,values){const ec=columnLetter(values.length);await excelApi('PATCH',`/worksheets/${encodeURIComponent(sheet)}/range(address='A${rowIndex}:${ec}${rowIndex}')`,{values:[values]});}
+
+async function appendRow(sheet,values){
+  // Always re-read the sheet fresh to get the true last row
+  const fresh=await readSheet(sheet);
+  let last=1;
+  for(let i=1;i<fresh.length;i++){
+    if(fresh[i].some(c=>c!==null&&c!==undefined&&c!==''))last=i+1;
+  }
+  const nr=last+1;
+  const ec=columnLetter(values.length);
+  await excelApi('PATCH',`/worksheets/${encodeURIComponent(sheet)}/range(address='A${nr}:${ec}${nr}')`,{values:[values]});
+  return nr;
+}
+
+function columnLetter(n){let r='';while(n>0){const rem=(n-1)%26;r=String.fromCharCode(65+rem)+r;n=Math.floor((n-1)/26);}return r;}
+
+// ── LOAD ──────────────────────────────────────────────────────────────────────
+async function loadAllSheets(){
+  setSyncing(true);document.getElementById('tab-dashboard').innerHTML='<div class="loading"><div class="spinner"></div> Loading…</div>';
+  try{for(const s of['Product','Accessories','Tools','Dashboard','Strategy']){try{sheetData[s]=await readSheet(s);}catch{sheetData[s]=[];}}setSyncing(false);renderAll();checkOverdueNotifications();}
+  catch(e){setSyncing(false,true);toast('Error: '+e.message,'error');}
+}
+function setSyncing(s,err){const d=document.getElementById('sync-dot'),l=document.getElementById('sync-label');if(err){d.className='sync-dot error';l.textContent='Error';}else if(s){d.className='sync-dot syncing';l.textContent='Syncing…';}else{d.className='sync-dot';l.textContent='Connected';}}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function rowsToObjects(rows){if(!rows.length)return[];const h=rows[0];return rows.slice(1).map((row,i)=>{const o={};h.forEach((k,j)=>{o[k]=row[j]??'';});o.__row=i+2;return o;});}
+function badge(status,id){const s=(status||'').toString().trim().toLowerCase();let cls='badge-other';if(s==='sold')cls='badge-sold';else if(s==='received')cls='badge-received';else if(s==='purchased')cls='badge-purchased';else if(s==='advertised')cls='badge-advertised';else if(s==='posted to buyer')cls='badge-posted';else if(s==='received by buyer')cls='badge-delivered';else if(s==='defect')cls='badge-defect';if(!s||s==='0')return'';return`<span class="badge ${cls}" onclick="event.stopPropagation();openStatusDropdown(event,'${id}')" title="Click to change status">${status}</span>`;}
+function fmtCurrency(v){const n=parseFloat(v);return isNaN(n)||v===''||v===null?'—':'£'+n.toFixed(2);}
+function profitHtml(v){const n=parseFloat(v);if(isNaN(n)||v===''||v===null)return'<span class="profit-zero">—</span>';const warn=n>0&&n<settings.minProfit;const cls=warn?'profit-warn':n>0?'profit-pos':n<0?'profit-neg':'profit-zero';return`<span class="${cls}" title="${warn?'Below minimum profit target':''}">${n>0?'+':''}£${n.toFixed(2)}${warn?' ⚠':''}</span>`;}
+function excelSerialToDate(s){return new Date(Date.UTC(1899,11,30)+s*86400000);}
+function fmtDate(v){if(!v||v===''||v===0||v==='0')return'—';const s=v.toString().trim();if(/^\d{5,6}$/.test(s)&&parseInt(s)>40000){const d=excelSerialToDate(parseInt(s));return isNaN(d)?s:d.toLocaleDateString('en-GB');}if(s.includes('T')||(s.includes('-')&&s.length>=10)){const d=new Date(s);return isNaN(d)?s:d.toLocaleDateString('en-GB');}if(/^\d{2}\/\d{2}\/\d{4}$/.test(s))return s;return s;}
+function parseDateValue(v){if(!v||v===''||v===0||v==='0')return null;const s=v.toString().trim();if(/^\d{5,6}$/.test(s)&&parseInt(s)>40000)return excelSerialToDate(parseInt(s));if(s.includes('T')||(s.includes('-')&&s.length>=10)){const d=new Date(s);return isNaN(d)?null:d;}if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)){const[dd,mm,yyyy]=s.split('/');return new Date(`${yyyy}-${mm}-${dd}`);}return null;}
+function toDateInput(v){const d=parseDateValue(v);if(!d)return'';return d.toISOString().substring(0,10);}
+function advDateClass(row){const status=(row.Status||'').toString().trim().toLowerCase();if(status!=='advertised')return'';const d=parseDateValue(row['Advertised Date']);if(!d)return'';const days=Math.floor((new Date()-d)/(1000*60*60*24));if(days>=10)return'adv-red';if(days>=5)return'adv-amber';if(days>=0)return'adv-green';return'';}
+function toast(msg,type=''){const c=document.getElementById('toasts');const el=document.createElement('div');el.className='toast '+type;el.textContent=msg;c.appendChild(el);setTimeout(()=>el.remove(),3500);}
+function nextId(prefix,rows){const nums=rows.map(r=>r.Internal_ID||'').filter(id=>id.toString().startsWith(prefix)).map(id=>parseInt(id.toString().replace(prefix,''))||0);const max=nums.length?Math.max(...nums):99;return prefix+(max+1);}
+function lbl(key){const c=colConfig.find(x=>x.k===key);return c?c.l:key;}
+
+// ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
+async function checkOverdueNotifications(){
+  if(!settings.notifEnabled)return;
+  if(!('Notification' in window))return;
+  if(Notification.permission!=='granted')return;
+  const products=rowsToObjects(sheetData.Product);
+  const overdue=products.filter(r=>{
+    if((r.Status||'').toString().trim().toLowerCase()!=='advertised')return false;
+    const d=parseDateValue(r['Advertised Date']);
+    if(!d)return false;
+    return Math.floor((new Date()-d)/(1000*60*60*24))>=10;
+  });
+  if(overdue.length>0){
+    new Notification('Product Tracker — Action needed',{body:`${overdue.length} listing${overdue.length>1?'s are':' is'} 10+ days old: ${overdue.map(r=>r.Internal_ID).join(', ')}`,icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔍</text></svg>'});
+  }
+}
+
+async function requestNotifPermission(){
+  if(!('Notification' in window)){toast('Notifications not supported in this browser','error');return;}
+  const perm=await Notification.requestPermission();
+  if(perm==='granted'){settings.notifEnabled=true;saveSettings();toast('Notifications enabled!','success');}
+  else{settings.notifEnabled=false;saveSettings();toast('Notification permission denied','error');}
+}
+
+// ── STATUS DROPDOWN ───────────────────────────────────────────────────────────
+function openStatusDropdown(e,id){
+  e.stopPropagation();
+  document.querySelectorAll('.status-dropdown').forEach(d=>d.remove());
+  const dd=document.createElement('div');dd.className='status-dropdown';
+  PRODUCT_STATUSES.forEach(s=>{
+    const item=document.createElement('div');item.className='status-dropdown-item';item.textContent=s;
+    item.onclick=async(ev)=>{ev.stopPropagation();dd.remove();await quickUpdateStatus(id,s);};
+    dd.appendChild(item);
+  });
+  // Cancel item
+  const cancel=document.createElement('div');cancel.className='status-dropdown-item';cancel.style.color='var(--text3)';cancel.textContent='Cancel';cancel.onclick=()=>dd.remove();dd.appendChild(cancel);
+  dd.style.left=e.clientX+'px';dd.style.top=(e.clientY+4)+'px';
+  document.body.appendChild(dd);
+  setTimeout(()=>document.addEventListener('click',()=>dd.remove(),{once:true}),0);
+}
+
+async function quickUpdateStatus(id,newStatus){
+  const rows=rowsToObjects(sheetData.Product);
+  const r=rows.find(x=>x.Internal_ID===id);if(!r)return;
+  const values=PRODUCT_HEADERS.map(h=>h==='Status'?newStatus:(r[h]??''));
+  setSyncing(true);
+  try{await writeRow('Product',r.__row,values);toast(`${id} → ${newStatus}`,'success');await loadAllSheets();}
+  catch(e){setSyncing(false,true);toast('Update failed: '+e.message,'error');}
+}
+
+// ── BULK ACTIONS ──────────────────────────────────────────────────────────────
+function toggleRowSelect(id,checked){
+  if(checked)selectedRows.add(id);else selectedRows.delete(id);
+  updateBulkBar();
+  // highlight row
+  document.querySelectorAll(`tr[data-id="${id}"]`).forEach(tr=>{
+    if(checked)tr.classList.add('row-selected');else tr.classList.remove('row-selected');
+  });
+}
+
+function toggleSelectAll(checked){
+  const rows=rowsToObjects(sheetData.Product);
+  if(checked)rows.forEach(r=>selectedRows.add(r.Internal_ID));else selectedRows.clear();
+  updateBulkBar();
+  renderProductsTable();
+}
+
+function updateBulkBar(){
+  const bar=document.getElementById('bulk-bar');if(!bar)return;
+  if(selectedRows.size>0){bar.classList.add('visible');bar.querySelector('.bulk-count').textContent=selectedRows.size;}
+  else bar.classList.remove('visible');
+}
+
+async function bulkUpdateStatus(){
+  const newStatus=document.getElementById('bulk-status-select').value;
+  if(!newStatus||selectedRows.size===0)return;
+  if(!confirm(`Change ${selectedRows.size} items to "${newStatus}"?`))return;
+  setSyncing(true);
+  const rows=rowsToObjects(sheetData.Product);
+  try{
+    for(const id of selectedRows){
+      const r=rows.find(x=>x.Internal_ID===id);if(!r)continue;
+      const values=PRODUCT_HEADERS.map(h=>h==='Status'?newStatus:(r[h]??''));
+      await writeRow('Product',r.__row,values);
+    }
+    selectedRows.clear();toast('Bulk update done!','success');await loadAllSheets();
+  }catch(e){setSyncing(false,true);toast('Bulk update failed: '+e.message,'error');}
+}
+
+async function bulkDelete(){
+  if(selectedRows.size===0)return;
+  if(!confirm(`Delete ${selectedRows.size} items? This cannot be undone.`))return;
+  setSyncing(true);
+  const rows=rowsToObjects(sheetData.Product);
+  try{
+    for(const id of selectedRows){
+      const r=rows.find(x=>x.Internal_ID===id);if(!r)continue;
+      await excelApi('PATCH',`/worksheets/Product/range(address='A${r.__row}:${columnLetter(PRODUCT_HEADERS.length)}${r.__row}')`,{values:[Array(PRODUCT_HEADERS.length).fill('')]});
+    }
+    selectedRows.clear();toast('Deleted','success');await loadAllSheets();
+  }catch(e){setSyncing(false,true);toast('Delete failed: '+e.message,'error');}
+}
+
+function exportCSV(){
+  const rows=rowsToObjects(sheetData.Product);
+  const visibleCols=colConfig.filter(c=>c.v);
+  const headers=visibleCols.map(c=>c.l);
+  const lines=[headers.join(',')];
+  rows.forEach(r=>{
+    const vals=visibleCols.map(c=>{const v=(r[c.k]??'').toString().replace(/"/g,'""');return`"${v}"`;});
+    lines.push(vals.join(','));
+  });
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='products.csv';a.click();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function switchTab(tab,btn){document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');['dashboard','products','accessories','tools','strategy','reports','calculator'].forEach(t=>{document.getElementById('tab-'+t).style.display=t===tab?'block':'none';});if(tab==='reports')renderReports();if(tab==='calculator')renderCalculator();}
+function renderAll(){renderDashboard();renderProductsTable();renderSimpleTable('Accessories','tab-accessories','accessory');renderSimpleTable('Tools','tab-tools','tool');renderStrategy();}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function renderDashboard(){
+  const raw=sheetData.Dashboard;
+  const get=label=>{const row=raw.find(r=>r[0]&&r[0].toString().trim().toLowerCase()===label.toLowerCase());return row?row[1]:null;};
+  const f=v=>{const x=parseFloat(v);return isNaN(x)?'—':'£'+x.toFixed(2);};
+  const n=v=>{const x=parseFloat(v);return isNaN(x)?'—':Math.round(x);};
+  const pc=v=>parseFloat(v)>=0?'green':'red';
+  const products=rowsToObjects(sheetData.Product);
+
+  // Stock value (unsold)
+  const unsold=products.filter(r=>{const s=(r.Status||'').toLowerCase();return s!=='sold'&&s!=='received by buyer';});
+  const stockValue=unsold.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
+
+  const advItems=products.filter(r=>(r.Status||'').toString().trim().toLowerCase()==='advertised').map(r=>{
+    const d=parseDateValue(r['Advertised Date']);const days=d?Math.floor((new Date()-d)/(1000*60*60*24)):null;
+    const cls=days===null?'green-item':days>=10?'red-item':days>=5?'amber-item':'green-item';
+    return`<div class="adv-item ${cls}"><strong>${r.Internal_ID}</strong>&nbsp;${r.Make} ${r.Model}${days!==null?`<span class="adv-days">${days}d listed</span>`:''}</div>`;
+  }).join('');
+
+  const notifBtn=settings.notifEnabled?`<span style="font-size:12px;color:var(--green)">🔔 Notifications on</span>`:`<button class="btn-secondary" style="font-size:12px" onclick="requestNotifPermission()">🔔 Enable notifications</button>`;
+
+  document.getElementById('tab-dashboard').innerHTML=`
+    <div class="dash-grid">
+      <div class="dash-card"><div class="dc-label">Vacuums bought</div><div class="dc-value">${n(get('Vacuums Bought'))}</div></div>
+      <div class="dash-card"><div class="dc-label">Products sold</div><div class="dc-value">${n(get('Products Sold'))}</div></div>
+      <div class="dash-card"><div class="dc-label">Total earnings</div><div class="dc-value green">${f(get('Earnings'))}</div></div>
+      <div class="dash-card"><div class="dc-label">Total profit</div><div class="dc-value ${pc(get('Total Profit'))}">${f(get('Total Profit'))}</div></div>
+      <div class="dash-card"><div class="dc-label">Total cost</div><div class="dc-value">${f(get('Total Cost'))}</div></div>
+      <div class="dash-card"><div class="dc-label">Avg sale price</div><div class="dc-value">${f(get('Avg Sale Price'))}</div></div>
+      <div class="dash-card"><div class="dc-label">Avg profit/sale</div><div class="dc-value">${f(get('Avg Profit Per Sale'))}</div></div>
+      <div class="dash-card"><div class="dc-label">Stock value</div><div class="dc-value amber" style="color:var(--amber)">${'£'+stockValue.toFixed(2)}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem">
+      <div class="dash-section"><h3>Costs</h3>
+        <div class="dash-row"><span>Products</span><span class="dr-val">${f(get('Products Cost'))}</span></div>
+        <div class="dash-row"><span>Accessories</span><span class="dr-val">${f(get('Accessories Cost'))}</span></div>
+        <div class="dash-row"><span>Tools</span><span class="dr-val">${f(get('Tools Cost'))}</span></div>
+        <div class="dash-row"><span><strong>Total</strong></span><span class="dr-val"><strong>${f(get('Total Cost'))}</strong></span></div>
+        <div class="dash-row"><span>Avg purchase price</span><span class="dr-val">${f(get('Avg Purchase Price Per vacuum'))}</span></div>
+      </div>
+      <div class="dash-section"><h3>Profit stats</h3>
+        <div class="dash-row"><span>Max profit</span><span class="dr-val green">${f(get('Max Profit on sale'))}</span></div>
+        <div class="dash-row"><span>Min profit</span><span class="dr-val ${pc(get('Min Profit on sale'))}">${f(get('Min Profit on sale'))}</span></div>
+        <div class="dash-row"><span>Avg profit/sale</span><span class="dr-val">${f(get('Avg Profit Per Sale'))}</span></div>
+        <div class="dash-row"><span>Min profit target</span><span class="dr-val">£${settings.minProfit} <button class="btn-edit" onclick="openSettingsModal()" style="margin-left:4px">edit</button></span></div>
+      </div>
+      <div class="dash-section"><h3>Stock</h3>
+        <div class="dash-row"><span>Bought</span><span class="dr-val">${n(get('Products Bought'))}</span></div>
+        <div class="dash-row"><span>Sold</span><span class="dr-val">${n(get('Products Sold'))}</span></div>
+        <div class="dash-row"><span>Advertised</span><span class="dr-val">${n(get('Products Advertised'))}</span></div>
+        <div class="dash-row"><span>Awaiting arrival</span><span class="dr-val">${n(get('Products Awaiting Arrival'))}</span></div>
+        <div class="dash-row"><span>Not yet advertised</span><span class="dr-val">${n(get('Received but not Advertised'))}</span></div>
+        <div class="dash-row"><span>Defects</span><span class="dr-val red">${n(get('Products with defect'))}</span></div>
+      </div>
+    </div>
+    <div class="dash-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="margin-bottom:0">Advertised listings — action tracker</h3>
+        ${notifBtn}
+      </div>
+      ${advItems||'<p style="color:var(--text3);font-size:13px">No advertised listings.</p>'}
+      <p style="font-size:11px;color:var(--text3);margin-top:8px">🟢 0–4 days &nbsp; 🟡 5–9 days &nbsp; 🔴 10+ days</p>
+    </div>`;
+}
+
+// ── SETTINGS MODAL ────────────────────────────────────────────────────────────
+function openSettingsModal(){
+  const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:400px">
+    <div class="modal-header"><h3>Settings</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-section"><div class="form-section-title">Profit target</div>
+        <div class="field"><label>Minimum profit warning threshold (£)</label>
+          <input id="set_minprofit" type="number" step="1" value="${settings.minProfit}">
+          <span style="font-size:12px;color:var(--text3);margin-top:4px">Profits below this will show a ⚠ warning in the Products tab</span>
+        </div>
+      </div>
+      <div class="form-section"><div class="form-section-title">Notifications</div>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:10px">Get a browser notification when listings are 10+ days old. Works on Chrome desktop and Android. Safari on iPhone requires adding the app to your home screen first.</p>
+        <button class="btn-secondary" onclick="requestNotifPermission()">
+          ${settings.notifEnabled?'🔔 Notifications enabled — click to re-request':'🔔 Enable notifications'}
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-footer-actions">
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveSettingsFromModal()">Save</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+function saveSettingsFromModal(){
+  settings.minProfit=parseFloat(document.getElementById('set_minprofit').value)||30;
+  saveSettings();closeModal();renderAll();toast('Settings saved','success');
+}
+
+// ── PRODUCTS TABLE ────────────────────────────────────────────────────────────
+function renderProductsTable(){
+  let rows=rowsToObjects(sheetData.Product);
+  const allRows=rows;
+  rows=rows.filter(r=>{
+    const q=productSearch.toLowerCase();
+    const ms=!q||Object.values(r).filter(v=>typeof v==='string'||typeof v==='number').join(' ').toLowerCase().includes(q);
+    const mf=!productFilter||(r.Status||'').toString().trim()===productFilter;
+    return ms&&mf;
+  });
+  if(productSort.col){rows.sort((a,b)=>{let av=a[productSort.col]??'',bv=b[productSort.col]??'';const an=parseFloat(av),bn=parseFloat(bv);if(!isNaN(an)&&!isNaN(bn))return productSort.dir==='asc'?an-bn:bn-an;return productSort.dir==='asc'?av.toString().localeCompare(bv.toString()):bv.toString().localeCompare(av.toString());});}
+
+  const visibleCols=colConfig.filter(c=>c.v);
+  const allSelected=rows.length>0&&rows.every(r=>selectedRows.has(r.Internal_ID));
+  const thHtml=`<th class="cb-col"><input type="checkbox" ${allSelected?'checked':''} onchange="toggleSelectAll(this.checked)"></th>`+
+    visibleCols.map(c=>{const active=productSort.col===c.k;const cls=active?(productSort.dir==='asc'?'sort-asc':'sort-desc'):'';return`<th class="${cls}" onclick="sortProducts('${c.k}')">${c.l}<span class="sa"></span></th>`;}).join('');
+
+  const tdHtml=rows.length?rows.map(r=>{
+    const ac=advDateClass(r);
+    const sel=selectedRows.has(r.Internal_ID);
+    const cells=visibleCols.map(c=>{
+      const v=r[c.k];
+      if(c.k==='Status')return`<td>${badge(v,r.Internal_ID)}</td>`;
+      if(c.k==='Purchase_Price'||c.k==='Sale_price')return`<td>${fmtCurrency(v)}</td>`;
+      if(c.k==='Profit')return`<td>${profitHtml(v)}</td>`;
+      if(c.k==='Purchase_date'||c.k==='Sale_date')return`<td>${fmtDate(v)}</td>`;
+      if(c.k==='Advertised Date')return`<td class="${ac}">${fmtDate(v)}</td>`;
+      if(c.k==='Cleaned'||c.k==='Ready_to_go')return`<td style="text-align:center">${v==='Yes'||v===true?'✓':''}</td>`;
+      if(c.k==='Notes')return`<td><span class="notes-cell" onclick="event.stopPropagation();this.classList.toggle('expanded')" title="Click to expand">${v||''}</span></td>`;
+      const isMono=['Internal_ID','Model_Code','Order/Invoice_number','Main_Unit_SN','Main_unit_void_sticker_SN','Battery_SN','Battery_Void_Sticker_SN','Motorised_Head_SN'].includes(c.k);
+      return`<td class="${isMono?'mono':''}" style="${isMono?'font-size:11px':''}">${v||''}</td>`;
+    }).join('');
+    return`<tr data-id="${r.Internal_ID}" class="${sel?'row-selected':''}" onclick="openProductModal('${r.Internal_ID}')">
+      <td class="cb-col" onclick="event.stopPropagation()"><input type="checkbox" ${sel?'checked':''} onchange="toggleRowSelect('${r.Internal_ID}',this.checked)"></td>
+      ${cells}
+    </tr>`;
+  }).join(''):`<tr class="empty-row"><td colspan="${visibleCols.length+1}">No products found</td></tr>`;
+
+  document.getElementById('tab-products').innerHTML=`
+    <div id="bulk-bar" class="bulk-bar ${selectedRows.size>0?'visible':''}">
+      <strong><span class="bulk-count">${selectedRows.size}</span> selected</strong>
+      <select id="bulk-status-select" style="height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:'DM Sans',sans-serif">
+        <option value="">Change status to…</option>
+        ${PRODUCT_STATUSES.map(s=>`<option>${s}</option>`).join('')}
+      </select>
+      <button class="btn-primary" style="padding:5px 12px;font-size:12px" onclick="bulkUpdateStatus()">Apply</button>
+      <button class="btn-danger" style="padding:5px 12px;font-size:12px" onclick="bulkDelete()">Delete selected</button>
+      <button class="btn-secondary" style="padding:5px 12px;font-size:12px;margin-left:auto" onclick="selectedRows.clear();renderProductsTable()">Clear</button>
+    </div>
+    <div class="toolbar">
+      <input type="text" placeholder="Search all fields…" value="${productSearch}" oninput="productSearch=this.value;renderProductsTable()">
+      <select onchange="productFilter=this.value;renderProductsTable()">
+        <option value="">All statuses</option>
+        ${PRODUCT_STATUSES.map(s=>`<option ${productFilter===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <button class="btn-primary" onclick="openProductModal(null)">+ Add product</button>
+      <button class="btn-secondary" onclick="openColumnManager()">⚙ Columns</button>
+      <button class="btn-secondary" onclick="exportCSV()">↓ CSV</button>
+      <button class="btn-secondary" onclick="loadAllSheets()">↻ Refresh</button>
+      <span style="margin-left:auto;font-size:12px;color:var(--text3)">${rows.length} of ${allRows.length}</span>
+    </div>
+    <div class="table-outer"><table><thead><tr>${thHtml}</tr></thead><tbody>${tdHtml}</tbody></table></div>`;
+}
+
+function sortProducts(col){if(productSort.col===col)productSort.dir=productSort.dir==='asc'?'desc':'asc';else{productSort.col=col;productSort.dir='asc';}renderProductsTable();}
+
+// ── COLUMN MANAGER ────────────────────────────────────────────────────────────
+function openColumnManager(){
+  closeModal();
+  const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='modal-overlay';
+  const items=colConfig.map((c,i)=>`
+    <div class="col-item" draggable="true" data-idx="${i}"
+      ondragstart="colDragStart(event,${i})" ondragover="colDragOver(event,${i})"
+      ondrop="colDrop(event,${i})" ondragend="colDragEnd(event)">
+      <span class="col-drag-handle">⠿</span>
+      <input type="checkbox" ${c.v?'checked':''} onchange="colToggle(${i},this.checked)">
+      <input class="col-label-input" value="${c.l}" oninput="colRename(${i},this.value)" title="Edit display name">
+      <span class="col-key">${c.k}</span>
+    </div>`).join('');
+  overlay.innerHTML=`<div class="modal">
+    <div class="modal-header"><h3>Manage columns</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="col-list">
+        <div class="col-list-header">⠿ Drag to reorder &nbsp;·&nbsp; ✓ tick to show &nbsp;·&nbsp; click name to rename</div>
+        <div class="col-list-body">${items}</div>
+      </div>
+      <p class="col-manager-hint">Renaming updates the table and form labels immediately. Click "Save names to Excel" to also update the header row in your spreadsheet.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="resetColConfig()">Reset defaults</button>
+      <div class="modal-footer-actions">
+        <button class="btn-secondary" onclick="closeModal()">Close</button>
+        <button class="btn-primary" onclick="saveColNamesToExcel()">Save names to Excel</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+function colToggle(idx,checked){colConfig[idx].v=checked;saveColConfig();renderProductsTable();}
+function colRename(idx,val){colConfig[idx].l=val;saveColConfig();renderProductsTable();}
+function colDragStart(e,idx){dragSrcIdx=idx;e.currentTarget.classList.add('dragging');e.dataTransfer.effectAllowed='move';}
+function colDragOver(e,idx){e.preventDefault();document.querySelectorAll('.col-item').forEach(el=>el.classList.remove('drag-over'));if(idx!==dragSrcIdx)e.currentTarget.classList.add('drag-over');}
+function colDrop(e,idx){e.preventDefault();if(dragSrcIdx===null||dragSrcIdx===idx)return;const moved=colConfig.splice(dragSrcIdx,1)[0];colConfig.splice(idx,0,moved);saveColConfig();renderProductsTable();closeModal();openColumnManager();}
+function colDragEnd(e){e.currentTarget.classList.remove('dragging');document.querySelectorAll('.col-item').forEach(el=>el.classList.remove('drag-over'));dragSrcIdx=null;}
+function resetColConfig(){colConfig=DEFAULT_COLS.map(c=>({...c}));saveColConfig();closeModal();openColumnManager();renderProductsTable();}
+async function saveColNamesToExcel(){
+  setSyncing(true);
+  try{const headers=colConfig.map(c=>c.l);const ec=columnLetter(headers.length);await excelApi('PATCH',`/worksheets/Product/range(address='A1:${ec}1')`,{values:[headers]});toast('Column names saved to Excel!','success');setSyncing(false);}
+  catch(e){setSyncing(false,true);toast('Failed: '+e.message,'error');}
+}
+
+// ── PRODUCT MODAL ─────────────────────────────────────────────────────────────
+function openProductModal(id){
+  const rows=rowsToObjects(sheetData.Product);
+  const r=id?rows.find(x=>x.Internal_ID===id):null;
+  const isNew=!r;const v=r||{};
+  const sid=isNew?nextId('V',rows):v.Internal_ID;
+  const sopts=PRODUCT_STATUSES.map(s=>`<option ${(v.Status||'')==s?'selected':''}>${s}</option>`).join('');
+  const dupBtn=!isNew?`<button class="btn-secondary" onclick="duplicateProduct('${v.Internal_ID}')">Duplicate</button>`:'';
+  const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='modal-overlay';
+  overlay.innerHTML=`<div class="modal">
+    <div class="modal-header"><h3>${isNew?'Add product':'Edit '+v.Internal_ID}</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-section"><div class="form-section-title">General</div><div class="form-grid">
+        <div class="field"><label>${lbl('Internal_ID')}</label><input id="m_id" value="${sid}" ${isNew?'':'readonly'}></div>
+        <div class="field"><label>${lbl('Item')}</label><input id="m_item" value="${v.Item||'Vacuum'}"></div>
+        <div class="field"><label>${lbl('Status')}</label><select id="m_status">${sopts}</select></div>
+        <div class="field"><label>${lbl('Notes')}</label><input id="m_notes" value="${(v.Notes||'').toString().replace(/"/g,'&quot;')}"></div>
+      </div></div>
+      <div class="form-section"><div class="form-section-title">Purchase details</div><div class="form-grid cols3">
+        <div class="field"><label>${lbl('Make')}</label><input id="m_make" value="${v.Make||''}"></div>
+        <div class="field"><label>${lbl('Model')}</label><input id="m_model" value="${v.Model||''}"></div>
+        <div class="field"><label>${lbl('Model_Code')}</label><input id="m_model_code" value="${v.Model_Code||''}"></div>
+        <div class="field"><label>${lbl('Colour')}</label><input id="m_colour" value="${v.Colour||''}"></div>
+        <div class="field"><label>${lbl('Purchase_Platform')}</label><input id="m_pplatform" value="${v.Purchase_Platform||''}"></div>
+        <div class="field"><label>${lbl('Order/Invoice_number')}</label><input id="m_order" value="${v['Order/Invoice_number']||''}"></div>
+        <div class="field"><label>${lbl('Purchase_Price')} (£)</label><input id="m_pprice" type="number" step="0.01" value="${v.Purchase_Price||''}" oninput="recalcProfit()"></div>
+        <div class="field"><label>${lbl('Purchase_date')}</label><input id="m_pdate" type="date" value="${toDateInput(v.Purchase_date)}"></div>
+      </div></div>
+      <div class="form-section"><div class="form-section-title">Serial numbers</div><div class="form-grid cols3">
+        <div class="field"><label>${lbl('Main_Unit_SN')}</label><input id="m_main_sn" value="${v.Main_Unit_SN||''}"></div>
+        <div class="field"><label>${lbl('Main_unit_void_sticker_SN')}</label><input id="m_main_void_sn" value="${v.Main_unit_void_sticker_SN||''}"></div>
+        <div class="field"><label>${lbl('Battery_SN')}</label><input id="m_bat_sn" value="${v.Battery_SN||''}"></div>
+        <div class="field"><label>${lbl('Battery_Void_Sticker_SN')}</label><input id="m_bat_void_sn" value="${v.Battery_Void_Sticker_SN||''}"></div>
+        <div class="field"><label>${lbl('Motorised_Head_SN')}</label><input id="m_head_sn" value="${v.Motorised_Head_SN||''}"></div>
+      </div></div>
+      <div class="form-section"><div class="form-section-title">Listing &amp; sale</div><div class="form-grid cols3">
+        <div class="field"><label>${lbl('Cleaned')}</label><select id="m_cleaned"><option value="Yes" ${v.Cleaned==='Yes'?'selected':''}>Yes</option><option value="No" ${v.Cleaned!=='Yes'?'selected':''}>No</option></select></div>
+        <div class="field"><label>${lbl('Ready_to_go')}</label><select id="m_ready"><option value="Yes" ${v.Ready_to_go==='Yes'?'selected':''}>Yes</option><option value="No" ${v.Ready_to_go!=='Yes'?'selected':''}>No</option></select></div>
+        <div class="field"><label>${lbl('Advertised Date')}</label><input id="m_advdate" type="date" value="${toDateInput(v['Advertised Date'])}"></div>
+        <div class="field"><label>${lbl('Sale_Platform')}</label><input id="m_splat" value="${v.Sale_Platform||''}"></div>
+        <div class="field"><label>${lbl('Sold_To')}</label><input id="m_soldto" value="${v.Sold_To||''}"></div>
+        <div class="field"><label>${lbl('Sale_date')}</label><input id="m_sdate" type="date" value="${toDateInput(v.Sale_date)}"></div>
+        <div class="field"><label>${lbl('Sale_price')} (£)</label><input id="m_sprice" type="number" step="0.01" value="${v.Sale_price||''}" oninput="recalcProfit()"></div>
+        <div class="field"><label>${lbl('Profit')} (£) — auto</label><input id="m_profit" type="number" step="0.01" value="${v.Profit||''}" readonly></div>
+      </div></div>
+    </div>
+    <div class="modal-footer">
+      <div style="display:flex;gap:8px">
+        ${!isNew?`<button class="btn-danger" onclick="deleteRow('Product','${v.Internal_ID}',${v.__row})">Delete</button>`:''}
+        ${dupBtn}
+      </div>
+      <div class="modal-footer-actions">
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveProduct(${isNew},${isNew?-1:v.__row})">Save to Excel</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+function recalcProfit(){const pp=parseFloat(document.getElementById('m_pprice')?.value)||0;const sp=parseFloat(document.getElementById('m_sprice')?.value)||0;const pf=document.getElementById('m_profit');if(pf&&sp)pf.value=(sp-pp).toFixed(2);}
+
+async function saveProduct(isNew,excelRow){
+  const pp=parseFloat(document.getElementById('m_pprice').value)||'';
+  const sp=parseFloat(document.getElementById('m_sprice').value)||'';
+  const profit=(pp&&sp)?parseFloat((sp-pp).toFixed(2)):(parseFloat(document.getElementById('m_profit').value)||'');
+  const values=[document.getElementById('m_id').value,document.getElementById('m_item').value,document.getElementById('m_pplatform').value,document.getElementById('m_order').value,document.getElementById('m_status').value,document.getElementById('m_advdate').value,pp,document.getElementById('m_pdate').value,document.getElementById('m_make').value,document.getElementById('m_model').value,document.getElementById('m_model_code').value,document.getElementById('m_colour').value,document.getElementById('m_main_sn').value,document.getElementById('m_main_void_sn').value,document.getElementById('m_bat_sn').value,document.getElementById('m_bat_void_sn').value,document.getElementById('m_head_sn').value,document.getElementById('m_splat').value,document.getElementById('m_soldto').value,document.getElementById('m_sdate').value,sp,profit,document.getElementById('m_cleaned').value,document.getElementById('m_ready').value,document.getElementById('m_notes').value];
+  await saveRowToExcel('Product',isNew,excelRow,values);
+}
+
+function duplicateProduct(id){
+  closeModal();
+  const rows=rowsToObjects(sheetData.Product);
+  const r=rows.find(x=>x.Internal_ID===id);if(!r)return;
+  const newId=nextId('V',rows);
+  // Open modal pre-filled but with new ID, cleared sale/serial fields
+  const dup={...r,Internal_ID:newId,Status:'Purchased',Sale_Platform:'',Sold_To:'',Sale_date:'',Sale_price:'',Profit:'',Main_Unit_SN:'',Main_unit_void_sticker_SN:'',Battery_SN:'',Battery_Void_Sticker_SN:'',Motorised_Head_SN:'','Advertised Date':''};
+  sheetData._dup=dup;
+  openProductModalWithData(dup,newId);
+}
+
+function openProductModalWithData(v,sid){
+  const sopts=PRODUCT_STATUSES.map(s=>`<option ${(v.Status||'')==s?'selected':''}>${s}</option>`).join('');
+  const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='modal-overlay';
+  overlay.innerHTML=`<div class="modal">
+    <div class="modal-header"><h3>Add product (duplicated from ${v.Internal_ID.replace(sid,'')})</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-section"><div class="form-section-title">General</div><div class="form-grid">
+        <div class="field"><label>${lbl('Internal_ID')}</label><input id="m_id" value="${sid}"></div>
+        <div class="field"><label>${lbl('Item')}</label><input id="m_item" value="${v.Item||'Vacuum'}"></div>
+        <div class="field"><label>${lbl('Status')}</label><select id="m_status">${sopts}</select></div>
+        <div class="field"><label>${lbl('Notes')}</label><input id="m_notes" value="${(v.Notes||'').toString().replace(/"/g,'&quot;')}"></div>
+      </div></div>
+      <div class="form-section"><div class="form-section-title">Purchase details</div><div class="form-grid cols3">
+        <div class="field"><label>${lbl('Make')}</label><input id="m_make" value="${v.Make||''}"></div>
+        <div class="field"><label>${lbl('Model')}</label><input id="m_model" value="${v.Model||''}"></div>
+        <div class="field"><label>${lbl('Model_Code')}</label><input id="m_model_code" value="${v.Model_Code||''}"></div>
+        <div class="field"><label>${lbl('Colour')}</label><input id="m_colour" value="${v.Colour||''}"></div>
+        <div class="field"><label>${lbl('Purchase_Platform')}</label><input id="m_pplatform" value="${v.Purchase_Platform||''}"></div>
+        <div class="field"><label>${lbl('Order/Invoice_number')}</label><input id="m_order" value=""></div>
+        <div class="field"><label>${lbl('Purchase_Price')} (£)</label><input id="m_pprice" type="number" step="0.01" value="${v.Purchase_Price||''}" oninput="recalcProfit()"></div>
+        <div class="field"><label>${lbl('Purchase_date')}</label><input id="m_pdate" type="date" value=""></div>
+      </div></div>
+      <div class="form-section"><div class="form-section-title">Serial numbers</div><div class="form-grid cols3">
+        <div class="field"><label>${lbl('Main_Unit_SN')}</label><input id="m_main_sn" value=""></div>
+        <div class="field"><label>${lbl('Main_unit_void_sticker_SN')}</label><input id="m_main_void_sn" value=""></div>
+        <div class="field"><label>${lbl('Battery_SN')}</label><input id="m_bat_sn" value=""></div>
+        <div class="field"><label>${lbl('Battery_Void_Sticker_SN')}</label><input id="m_bat_void_sn" value=""></div>
+        <div class="field"><label>${lbl('Motorised_Head_SN')}</label><input id="m_head_sn" value=""></div>
+      </div></div>
+      <div class="form-section"><div class="form-section-title">Listing &amp; sale</div><div class="form-grid cols3">
+        <div class="field"><label>${lbl('Cleaned')}</label><select id="m_cleaned"><option value="No">No</option><option value="Yes">Yes</option></select></div>
+        <div class="field"><label>${lbl('Ready_to_go')}</label><select id="m_ready"><option value="No">No</option><option value="Yes">Yes</option></select></div>
+        <div class="field"><label>${lbl('Advertised Date')}</label><input id="m_advdate" type="date" value=""></div>
+        <div class="field"><label>${lbl('Sale_Platform')}</label><input id="m_splat" value=""></div>
+        <div class="field"><label>${lbl('Sold_To')}</label><input id="m_soldto" value=""></div>
+        <div class="field"><label>${lbl('Sale_date')}</label><input id="m_sdate" type="date" value=""></div>
+        <div class="field"><label>${lbl('Sale_price')} (£)</label><input id="m_sprice" type="number" step="0.01" value="" oninput="recalcProfit()"></div>
+        <div class="field"><label>${lbl('Profit')} (£) — auto</label><input id="m_profit" type="number" step="0.01" value="" readonly></div>
+      </div></div>
+    </div>
+    <div class="modal-footer"><span></span>
+      <div class="modal-footer-actions">
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveProduct(true,-1)">Save to Excel</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+// ── SIMPLE TABLE ──────────────────────────────────────────────────────────────
+function renderSimpleTable(sheet,tabId,type){
+  const rows=rowsToObjects(sheetData[sheet]);
+  document.getElementById(tabId).innerHTML=`
+    <div class="toolbar">
+      <button class="btn-primary" onclick="openSimpleModal('${sheet}',null,'${type}')">+ Add ${type}</button>
+      <button class="btn-secondary" onclick="loadAllSheets()">↻ Refresh</button>
+      <span style="margin-left:auto;font-size:12px;color:var(--text3)">${rows.length} items</span>
+    </div>
+    <div class="table-outer"><table>
+      <thead><tr><th>ID</th><th>Item</th><th>Platform</th><th>Order #</th><th>Status</th><th>Cost</th><th>Date</th><th>Make</th><th>Model</th><th>Notes</th><th></th></tr></thead>
+      <tbody>${rows.length?rows.map(r=>`<tr onclick="openSimpleModal('${sheet}','${r.Internal_ID}','${type}')">
+        <td class="mono">${r.Internal_ID||''}</td><td>${r.Item||''}</td><td>${r.Purchase_Platform||''}</td>
+        <td class="mono" style="font-size:11px">${r['Order/Invoice_number']||''}</td><td>${badge(r.Status,'')}</td>
+        <td>${fmtCurrency(r.Purchase_Price)}</td><td>${fmtDate(r.Purchase_date)}</td>
+        <td>${r.Make||''}</td><td>${r.Model||''}</td>
+        <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;color:var(--text2)">${r.Notes||''}</td>
+        <td><button class="btn-edit" onclick="event.stopPropagation();openSimpleModal('${sheet}','${r.Internal_ID}','${type}')">Edit</button></td>
+      </tr>`).join(''):`<tr class="empty-row"><td colspan="11">No items</td></tr>`}</tbody>
+    </table></div>`;
+}
+
+function openSimpleModal(sheet,id,type){
+  const rows=rowsToObjects(sheetData[sheet]);const r=id?rows.find(x=>x.Internal_ID===id):null;const isNew=!r;const v=r||{};
+  const prefix=type==='accessory'?'A':'T';const sid=isNew?nextId(prefix,rows):v.Internal_ID;
+  const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='modal-overlay';
+  overlay.innerHTML=`<div class="modal">
+    <div class="modal-header"><h3>${isNew?'Add '+type:'Edit '+v.Internal_ID}</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body"><div class="form-grid">
+      <div class="field"><label>Internal ID</label><input id="s_id" value="${sid}" ${isNew?'':'readonly'}></div>
+      <div class="field"><label>Item</label><input id="s_item" value="${v.Item||''}"></div>
+      <div class="field"><label>Status</label><select id="s_status">${['Received','In Use','Sold'].map(s=>`<option ${(v.Status||'')==s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="field"><label>Make</label><input id="s_make" value="${v.Make||''}"></div>
+      <div class="field"><label>Model / description</label><input id="s_model" value="${v.Model||''}"></div>
+      <div class="field"><label>Purchase platform</label><input id="s_pplatform" value="${v.Purchase_Platform||''}"></div>
+      <div class="field"><label>Order no.</label><input id="s_order" value="${v['Order/Invoice_number']||''}"></div>
+      <div class="field"><label>Purchase price (£)</label><input id="s_pprice" type="number" step="0.01" value="${v.Purchase_Price||''}"></div>
+      <div class="field"><label>Purchase date</label><input id="s_pdate" type="date" value="${toDateInput(v.Purchase_date)}"></div>
+      <div class="field full"><label>Notes</label><textarea id="s_notes">${v.Notes||''}</textarea></div>
+    </div></div>
+    <div class="modal-footer">
+      ${!isNew?`<button class="btn-danger" onclick="deleteRow('${sheet}','${v.Internal_ID}',${v.__row})">Delete</button>`:'<span></span>'}
+      <div class="modal-footer-actions">
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveSimple('${sheet}',${isNew},${isNew?-1:v.__row})">Save to Excel</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function saveSimple(sheet,isNew,excelRow){
+  const pad=Array(14).fill('');
+  const values=[document.getElementById('s_id').value,document.getElementById('s_item').value,document.getElementById('s_pplatform').value,document.getElementById('s_order').value,document.getElementById('s_status').value,parseFloat(document.getElementById('s_pprice').value)||'',document.getElementById('s_pdate').value,document.getElementById('s_make').value,document.getElementById('s_model').value,...pad,document.getElementById('s_notes').value];
+  await saveRowToExcel(sheet,isNew,excelRow,values);
+}
+
+async function saveRowToExcel(sheet,isNew,excelRow,values){
+  setSyncing(true);
+  try{if(isNew){await appendRow(sheet,values);toast('Added to Excel!','success');}else{await writeRow(sheet,excelRow,values);toast('Saved to Excel!','success');}closeModal();await loadAllSheets();}
+  catch(e){setSyncing(false,true);toast('Save failed: '+e.message,'error');}
+}
+
+async function deleteRow(sheet,id,excelRow){
+  if(!confirm(`Delete ${id}? This cannot be undone.`))return;setSyncing(true);
+  try{const cols=PRODUCT_HEADERS.length;await excelApi('PATCH',`/worksheets/${encodeURIComponent(sheet)}/range(address='A${excelRow}:${columnLetter(cols)}${excelRow}')`,{values:[Array(cols).fill('')]});toast('Deleted','success');closeModal();await loadAllSheets();}
+  catch(e){setSyncing(false,true);toast('Delete failed: '+e.message,'error');}
+}
+
+function closeModal(){document.querySelectorAll('.modal-overlay,.status-dropdown').forEach(el=>el.remove());}
+
+// ── STRATEGY ──────────────────────────────────────────────────────────────────
+function renderStrategy(){
+  const rows=sheetData.Strategy;if(!rows.length){document.getElementById('tab-strategy').innerHTML='<p style="color:var(--text3);padding:2rem">No strategy data.</p>';return;}
+  const sections=[];let cur=null;
+  rows.forEach(row=>{const f=(row[0]||'').toString().trim();if(f.match(/^\d+\./)){cur={title:f,headers:[],rows:[]};sections.push(cur);}else if(cur&&row.some(c=>c!==''&&c!==null)){if(!cur.headers.length&&row[1])cur.headers=row.map(c=>(c||'').toString());else if(row[1]||row[0])cur.rows.push(row.map(c=>(c||'').toString()));}});
+  document.getElementById('tab-strategy').innerHTML=sections.map(s=>`<div class="strategy-section"><div class="strat-header"><h3>${s.title}</h3></div><table class="strat-table">${s.headers.length?`<thead><tr>${s.headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>`:''}<tbody>${s.rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('');
+}
+
+// ── REPORTS ───────────────────────────────────────────────────────────────────
+function renderReports(){
+  const el=document.getElementById('tab-reports');Object.values(reportCharts).forEach(c=>c.destroy());reportCharts={};
+  el.innerHTML=`
+    <div class="report-controls">
+      <div class="field"><label>Period</label>
+        <select id="rpt-preset" onchange="applyReportPreset()">
+          <option value="this_month">This month</option><option value="this_week">This week</option>
+          <option value="last_month">Last month</option><option value="this_year">This year</option>
+          <option value="last_year">Last year</option><option value="all_time">All time</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </div>
+      <div class="field" id="rpt-from-wrap" style="display:none"><label>From</label><input type="date" id="rpt-from"></div>
+      <div class="field" id="rpt-to-wrap" style="display:none"><label>To</label><input type="date" id="rpt-to"></div>
+      <button class="btn-primary" style="align-self:flex-end" onclick="drawReportCharts()">Apply</button>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-card"><h3>Sales revenue by month</h3><canvas id="chart-revenue"></canvas></div>
+      <div class="chart-card"><h3>Profit by month</h3><canvas id="chart-profit"></canvas></div>
+      <div class="chart-card"><h3>Units sold by month</h3><canvas id="chart-units"></canvas></div>
+      <div class="chart-card"><h3>Purchase costs by month</h3><canvas id="chart-costs"></canvas></div>
+    </div>
+    <div class="chart-grid3">
+      <div class="chart-card"><h3>Profit by sale platform</h3><canvas id="chart-platform"></canvas></div>
+      <div class="chart-card"><h3>Profit by make</h3><canvas id="chart-make"></canvas></div>
+      <div class="chart-card"><h3>Best &amp; worst purchases</h3><canvas id="chart-bestworst"></canvas></div>
+    </div>
+    <div class="dash-section" id="rpt-summary"></div>`;
+  const now=new Date();document.getElementById('rpt-from').value=new Date(now.getFullYear(),now.getMonth(),1).toISOString().substring(0,10);document.getElementById('rpt-to').value=now.toISOString().substring(0,10);
+  drawReportCharts();
+}
+
+function applyReportPreset(){
+  const val=document.getElementById('rpt-preset').value;const now=new Date();
+  const p={this_week:[startOfWeek(now),now],this_month:[new Date(now.getFullYear(),now.getMonth(),1),now],last_month:[new Date(now.getFullYear(),now.getMonth()-1,1),new Date(now.getFullYear(),now.getMonth(),0)],this_year:[new Date(now.getFullYear(),0,1),now],last_year:[new Date(now.getFullYear()-1,0,1),new Date(now.getFullYear()-1,11,31)],all_time:[new Date('2000-01-01'),now]};
+  const fw=document.getElementById('rpt-from-wrap'),tw=document.getElementById('rpt-to-wrap');
+  if(val==='custom'){fw.style.display='';tw.style.display='';}else{fw.style.display='none';tw.style.display='none';const[f,t]=p[val];document.getElementById('rpt-from').value=f.toISOString().substring(0,10);document.getElementById('rpt-to').value=t.toISOString().substring(0,10);drawReportCharts();}
+}
+function startOfWeek(d){const c=new Date(d);c.setDate(c.getDate()-c.getDay()+1);c.setHours(0,0,0,0);return c;}
+
+function drawReportCharts(){
+  const from=new Date(document.getElementById('rpt-from').value);const to=new Date(document.getElementById('rpt-to').value);to.setHours(23,59,59);
+  const products=rowsToObjects(sheetData.Product);
+  const purchased=products.filter(r=>{const d=parseDateValue(r.Purchase_date);return d&&d>=from&&d<=to;});
+  const sold=products.filter(r=>{const d=parseDateValue(r.Sale_date);return d&&d>=from&&d<=to&&r.Sale_price;});
+  const mk=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const ml=k=>{const[y,m]=k.split('-');return new Date(y,m-1,1).toLocaleDateString('en-GB',{month:'short',year:'2-digit'});};
+  const rev={},prf={},unt={},cst={};
+  sold.forEach(r=>{const k=mk(parseDateValue(r.Sale_date));rev[k]=(rev[k]||0)+parseFloat(r.Sale_price||0);prf[k]=(prf[k]||0)+parseFloat(r.Profit||0);unt[k]=(unt[k]||0)+1;});
+  purchased.forEach(r=>{const k=mk(parseDateValue(r.Purchase_date));cst[k]=(cst[k]||0)+parseFloat(r.Purchase_Price||0);});
+  const months=[...new Set([...Object.keys(rev),...Object.keys(cst)])].sort();const labels=months.map(ml);
+
+  const mkBar=(id,label,data,color)=>{if(reportCharts[id])reportCharts[id].destroy();const ctx=document.getElementById(id);if(!ctx)return;reportCharts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label,data:months.map(m=>+(data[m]||0).toFixed(2)),backgroundColor:color+'33',borderColor:color,borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>(label==='Units'?'':' £')+v}}}}});};
+  mkBar('chart-revenue','Revenue',rev,'#2563eb');mkBar('chart-profit','Profit',prf,'#16a34a');mkBar('chart-units','Units',unt,'#d97706');mkBar('chart-costs','Costs',cst,'#dc2626');
+
+  // Profit by platform (doughnut)
+  const platProfit={};
+  sold.forEach(r=>{const p=(r.Sale_Platform||'Other').toString().trim()||'Other';platProfit[p]=(platProfit[p]||0)+parseFloat(r.Profit||0);});
+  if(reportCharts['chart-platform'])reportCharts['chart-platform'].destroy();
+  const pCtx=document.getElementById('chart-platform');
+  if(pCtx&&Object.keys(platProfit).length){reportCharts['chart-platform']=new Chart(pCtx,{type:'doughnut',data:{labels:Object.keys(platProfit),datasets:[{data:Object.values(platProfit).map(v=>+v.toFixed(2)),backgroundColor:['#2563eb','#16a34a','#d97706','#dc2626','#7e22ce','#0369a1']}]},options:{responsive:true,plugins:{legend:{position:'bottom'}}}});}
+
+  // Profit by make (bar)
+  const makeProfit={};
+  sold.forEach(r=>{const m=(r.Make||'Unknown').toString().trim()||'Unknown';makeProfit[m]=(makeProfit[m]||0)+parseFloat(r.Profit||0);});
+  const makeKeys=Object.keys(makeProfit).sort((a,b)=>makeProfit[b]-makeProfit[a]);
+  if(reportCharts['chart-make'])reportCharts['chart-make'].destroy();
+  const mCtx=document.getElementById('chart-make');
+  if(mCtx){reportCharts['chart-make']=new Chart(mCtx,{type:'bar',data:{labels:makeKeys,datasets:[{data:makeKeys.map(k=>+makeProfit[k].toFixed(2)),backgroundColor:'#2563eb33',borderColor:'#2563eb',borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'£'+v}}}}});}
+
+  // Best & worst 5 purchases by profit
+  const withProfit=sold.filter(r=>r.Profit!==''&&r.Profit!==null).sort((a,b)=>parseFloat(b.Profit)-parseFloat(a.Profit));
+  const top5=withProfit.slice(0,5);const bot5=[...withProfit].reverse().slice(0,5);
+  const bwItems=[...top5,...bot5.reverse()];
+  const bwLabels=bwItems.map(r=>r.Internal_ID);
+  const bwData=bwItems.map(r=>+parseFloat(r.Profit).toFixed(2));
+  const bwColors=bwData.map(v=>v>=0?'#16a34a':'#dc2626');
+  if(reportCharts['chart-bestworst'])reportCharts['chart-bestworst'].destroy();
+  const bwCtx=document.getElementById('chart-bestworst');
+  if(bwCtx){reportCharts['chart-bestworst']=new Chart(bwCtx,{type:'bar',data:{labels:bwLabels,datasets:[{data:bwData,backgroundColor:bwColors.map(c=>c+'55'),borderColor:bwColors,borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'£'+v}}}}});}
+
+  const tR=sold.reduce((a,r)=>a+parseFloat(r.Sale_price||0),0),tP=sold.reduce((a,r)=>a+parseFloat(r.Profit||0),0),tC=purchased.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
+  const belowTarget=sold.filter(r=>parseFloat(r.Profit||0)<settings.minProfit&&parseFloat(r.Profit||0)>0).length;
+  document.getElementById('rpt-summary').innerHTML=`<h3>Summary</h3>
+    <div class="dash-row"><span>Units sold</span><span class="dr-val">${sold.length}</span></div>
+    <div class="dash-row"><span>Units purchased</span><span class="dr-val">${purchased.length}</span></div>
+    <div class="dash-row"><span>Total revenue</span><span class="dr-val green">£${tR.toFixed(2)}</span></div>
+    <div class="dash-row"><span>Total profit</span><span class="dr-val ${tP>=0?'green':'red'}">£${tP.toFixed(2)}</span></div>
+    <div class="dash-row"><span>Purchase costs</span><span class="dr-val">£${tC.toFixed(2)}</span></div>
+    <div class="dash-row"><span>Avg sale price</span><span class="dr-val">${sold.length?'£'+(tR/sold.length).toFixed(2):'—'}</span></div>
+    <div class="dash-row"><span>Avg profit/sale</span><span class="dr-val">${sold.length?'£'+(tP/sold.length).toFixed(2):'—'}</span></div>
+    <div class="dash-row"><span>Sales below £${settings.minProfit} target</span><span class="dr-val" style="color:var(--amber)">${belowTarget}</span></div>`;
+}
+
+// ── CALCULATOR ────────────────────────────────────────────────────────────────
+function renderCalculator(){
+  document.getElementById('tab-calculator').innerHTML=`
+    <div class="calc-card">
+      <h3>Break-even &amp; profit calculator</h3>
+      <div class="calc-grid">
+        <div class="field"><label>Purchase price (£)</label><input id="c_buy" type="number" step="0.01" placeholder="e.g. 45.00" oninput="calcUpdate()"></div>
+        <div class="field"><label>Target profit (£)</label><input id="c_target" type="number" step="1" value="${settings.minProfit}" oninput="calcUpdate()"></div>
+        <div class="field"><label>Sale price (£) — optional</label><input id="c_sell" type="number" step="0.01" placeholder="e.g. 110.00" oninput="calcUpdate()"></div>
+      </div>
+      <div class="calc-grid" id="calc-results"></div>
+      <p style="font-size:12px;color:var(--text3);margin-top:1rem">Your minimum profit target is set to £${settings.minProfit}. <button class="btn-edit" onclick="openSettingsModal()">Change</button></p>
+    </div>
+    <div class="calc-card">
+      <h3>Stock profitability — unsold items</h3>
+      <div class="table-outer" style="max-height:400px"><table>
+        <thead><tr><th>ID</th><th>Make / Model</th><th>Status</th><th>Cost</th><th>Min sell price</th><th>To break even</th></tr></thead>
+        <tbody id="stock-table-body"></tbody>
+      </table></div>
+    </div>`;
+  renderStockTable();
+}
+
+function calcUpdate(){
+  const buy=parseFloat(document.getElementById('c_buy')?.value)||0;
+  const target=parseFloat(document.getElementById('c_target')?.value)||settings.minProfit;
+  const sell=parseFloat(document.getElementById('c_sell')?.value)||0;
+  const breakEven=buy;
+  const minSell=buy+target;
+  const actualProfit=sell?sell-buy:null;
+  const margin=sell&&sell>0?((sell-buy)/sell*100):null;
+  const res=document.getElementById('calc-results');if(!res)return;
+  res.innerHTML=`
+    <div class="calc-result"><div class="cr-label">Break-even price</div><div class="cr-value">£${breakEven.toFixed(2)}</div></div>
+    <div class="calc-result"><div class="cr-label">Min sell for £${target} profit</div><div class="cr-value green">£${minSell.toFixed(2)}</div></div>
+    ${actualProfit!==null?`
+    <div class="calc-result"><div class="cr-label">Actual profit</div><div class="cr-value ${actualProfit>=target?'green':actualProfit>0?'amber':'red'}">£${actualProfit.toFixed(2)}</div></div>
+    <div class="calc-result"><div class="cr-label">Profit margin</div><div class="cr-value ${actualProfit>=target?'green':actualProfit>0?'amber':'red'}">${margin.toFixed(1)}%</div></div>`:''}`;
+}
+
+function renderStockTable(){
+  const products=rowsToObjects(sheetData.Product);
+  const unsold=products.filter(r=>{const s=(r.Status||'').toLowerCase();return s!=='sold'&&s!=='received by buyer'&&r.Purchase_Price;});
+  const tbody=document.getElementById('stock-table-body');if(!tbody)return;
+  tbody.innerHTML=unsold.length?unsold.map(r=>{
+    const cost=parseFloat(r.Purchase_Price)||0;
+    const minSell=(cost+settings.minProfit).toFixed(2);
+    return`<tr>
+      <td class="mono">${r.Internal_ID}</td>
+      <td>${r.Make||''} ${r.Model||''}</td>
+      <td>${badge(r.Status,'')}</td>
+      <td>${fmtCurrency(r.Purchase_Price)}</td>
+      <td style="color:var(--green);font-weight:500;font-family:'DM Mono',monospace">£${minSell}</td>
+      <td style="font-family:'DM Mono',monospace;color:var(--text2)">£${cost.toFixed(2)}</td>
+    </tr>`;
+  }).join(''):`<tr class="empty-row"><td colspan="6">No unsold items</td></tr>`;
+}
+
+window.addEventListener('DOMContentLoaded',()=>initMsal());
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.key==='n'&&!e.ctrlKey&&!e.metaKey&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){openProductModal(null);}});
+</script>
+</body>
+</html>
