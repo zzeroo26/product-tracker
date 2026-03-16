@@ -1166,8 +1166,18 @@ function drawReportCharts(){
   const to=new Date(document.getElementById('rpt-to').value);to.setHours(23,59,59);
   const products=rowsToObjects(sheetData.Product,true);
   const soldStatuses=['sold','received by buyer','posted to buyer'];
-  const purchased=products.filter(r=>{const d=parseDateValue(r.Purchase_date);return d&&d>=from&&d<=to;});
-  const sold=products.filter(r=>{const d=parseDateValue(r.Sale_date);const s=(r.Status||'').toLowerCase();return d&&d>=from&&d<=to&&soldStatuses.includes(s);});
+  // Check if this is effectively "all time" (from year 2000)
+  const isAllTime=from.getFullYear()<=2000;
+  const purchased=products.filter(r=>{
+    if(isAllTime)return true; // all time — include everything
+    const d=parseDateValue(r.Purchase_date);return d&&d>=from&&d<=to;
+  });
+  const sold=products.filter(r=>{
+    const s=(r.Status||'').toLowerCase();
+    if(!soldStatuses.includes(s))return false;
+    if(isAllTime)return true; // all time — include all sold-status items regardless of date
+    const d=parseDateValue(r.Sale_date);return d&&d>=from&&d<=to;
+  });
   const mk=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
   const ml=k=>{const[y,m]=k.split('-');return new Date(y,m-1,1).toLocaleDateString('en-GB',{month:'short',year:'2-digit'});};
   const rev={},prf={},unt={},cst={};
@@ -1339,7 +1349,10 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.0 — Dashboard &amp; Reports overhaul (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.1 — Reports count fix (current)</p>
+          <p style="color:var(--text2)">• Fixed mismatch between summary card counts and period summary counts — "All time" now includes all items with a sold status regardless of whether a sale date is entered, matching the summary cards</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.0 — Dashboard &amp; Reports overhaul</p>
           <p style="color:var(--text2)">• Dashboard simplified to advertised listings monitor only<br>
           • Reports tab is now the single source of truth — all figures calculated live from Products, Accessories &amp; Tools sheets<br>
           • Net profit = revenue from sold items − cost of sold items (COGS) − accessories overhead − tools overhead<br>
