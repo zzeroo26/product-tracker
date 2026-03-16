@@ -379,7 +379,18 @@ async function loadAllSheets(){
 function setSyncing(s,err){const d=document.getElementById('sync-dot'),l=document.getElementById('sync-label');if(err){d.className='sync-dot error';l.textContent='Error';}else if(s){d.className='sync-dot syncing';l.textContent='Syncing…';}else{d.className='sync-dot';l.textContent='Connected';}}
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-function rowsToObjects(rows){if(!rows.length)return[];const h=rows[0];return rows.slice(1).map((row,i)=>{const o={};h.forEach((k,j)=>{o[k]=row[j]??'';});o.__row=i+2;return o;});}
+function rowsToObjects(rows,useFixedHeaders){
+  if(!rows.length)return[];
+  // If useFixedHeaders is true, use PRODUCT_HEADERS as keys (ignores renamed Excel headers)
+  // This ensures r.Internal_ID always works even if the Excel header says "ID"
+  const h=useFixedHeaders?PRODUCT_HEADERS:rows[0];
+  return rows.slice(1).map((row,i)=>{
+    const o={};
+    h.forEach((k,j)=>{o[k]=row[j]??'';});
+    o.__row=i+2;
+    return o;
+  });
+}
 function badge(status,id){const s=(status||'').toString().trim().toLowerCase();let cls='badge-other';if(s==='sold')cls='badge-sold';else if(s==='received')cls='badge-received';else if(s==='purchased')cls='badge-purchased';else if(s==='advertised')cls='badge-advertised';else if(s==='posted to buyer')cls='badge-posted';else if(s==='received by buyer')cls='badge-delivered';else if(s==='defect')cls='badge-defect';if(!s||s==='0')return'';return`<span class="badge ${cls}" onclick="event.stopPropagation();openStatusDropdown(event,'${id}')" title="Click to change status">${status}</span>`;}
 function fmtCurrency(v){const n=parseFloat(v);return isNaN(n)||v===''||v===null?'—':'£'+n.toFixed(2);}
 function profitHtml(v){const n=parseFloat(v);if(isNaN(n)||v===''||v===null)return'<span class="profit-zero">—</span>';const warn=n>0&&n<settings.minProfit;const cls=warn?'profit-warn':n>0?'profit-pos':n<0?'profit-neg':'profit-zero';return`<span class="${cls}" title="${warn?'Below minimum profit target':''}">${n>0?'+':''}£${n.toFixed(2)}${warn?' ⚠':''}</span>`;}
@@ -397,7 +408,7 @@ async function checkOverdueNotifications(){
   if(!settings.notifEnabled)return;
   if(!('Notification' in window))return;
   if(Notification.permission!=='granted')return;
-  const products=rowsToObjects(sheetData.Product);
+  const products=rowsToObjects(sheetData.Product,true);
   const overdue=products.filter(r=>{
     if((r.Status||'').toString().trim().toLowerCase()!=='advertised')return false;
     const d=parseDateValue(r['Advertised Date']);
@@ -434,7 +445,7 @@ function openStatusDropdown(e,id){
 }
 
 async function quickUpdateStatus(id,newStatus){
-  const rows=rowsToObjects(sheetData.Product);
+  const rows=rowsToObjects(sheetData.Product,true);
   const r=rows.find(x=>x.Internal_ID===id);if(!r)return;
   const values=PRODUCT_HEADERS.map(h=>h==='Status'?newStatus:(r[h]??''));
   setSyncing(true);
@@ -453,7 +464,7 @@ function toggleRowSelect(id,checked){
 }
 
 function toggleSelectAll(checked){
-  const rows=rowsToObjects(sheetData.Product);
+  const rows=rowsToObjects(sheetData.Product,true);
   if(checked)rows.forEach(r=>selectedRows.add(r.Internal_ID));else selectedRows.clear();
   updateBulkBar();
   renderProductsTable();
@@ -470,7 +481,7 @@ async function bulkUpdateStatus(){
   if(!newStatus||selectedRows.size===0)return;
   if(!confirm(`Change ${selectedRows.size} items to "${newStatus}"?`))return;
   setSyncing(true);
-  const rows=rowsToObjects(sheetData.Product);
+  const rows=rowsToObjects(sheetData.Product,true);
   try{
     for(const id of selectedRows){
       const r=rows.find(x=>x.Internal_ID===id);if(!r)continue;
@@ -485,7 +496,7 @@ async function bulkDelete(){
   if(selectedRows.size===0)return;
   if(!confirm(`Delete ${selectedRows.size} items? This cannot be undone.`))return;
   setSyncing(true);
-  const rows=rowsToObjects(sheetData.Product);
+  const rows=rowsToObjects(sheetData.Product,true);
   try{
     for(const id of selectedRows){
       const r=rows.find(x=>x.Internal_ID===id);if(!r)continue;
@@ -496,7 +507,7 @@ async function bulkDelete(){
 }
 
 function exportCSV(){
-  const rows=rowsToObjects(sheetData.Product);
+  const rows=rowsToObjects(sheetData.Product,true);
   const visibleCols=colConfig.filter(c=>c.v);
   const headers=visibleCols.map(c=>c.l);
   const lines=[headers.join(',')];
@@ -519,7 +530,7 @@ function renderDashboard(){
   const f=v=>{const x=parseFloat(v);return isNaN(x)?'—':'£'+x.toFixed(2);};
   const n=v=>{const x=parseFloat(v);return isNaN(x)?'—':Math.round(x);};
   const pc=v=>parseFloat(v)>=0?'green':'red';
-  const products=rowsToObjects(sheetData.Product);
+  const products=rowsToObjects(sheetData.Product,true);
 
   // Stock value (unsold)
   const unsold=products.filter(r=>{const s=(r.Status||'').toString().trim().toLowerCase();return s!=='sold'&&s!=='received by buyer';});
@@ -613,7 +624,7 @@ function saveSettingsFromModal(){
 
 // ── PRODUCTS TABLE ────────────────────────────────────────────────────────────
 function renderProductsTable(){
-  let rows=rowsToObjects(sheetData.Product);
+  let rows=rowsToObjects(sheetData.Product,true);
   const allRows=rows;
   rows=rows.filter(r=>{
     const q=productSearch.toLowerCase();
@@ -734,7 +745,7 @@ async function saveColNamesToExcel(){
 
 // ── PRODUCT MODAL ─────────────────────────────────────────────────────────────
 function openProductModal(id){
-  const rows=rowsToObjects(sheetData.Product);
+  const rows=rowsToObjects(sheetData.Product,true);
   const r=id?rows.find(x=>x.Internal_ID===id):null;
   const isNew=!r;const v=r||{};
   const sid=isNew?nextId('V',rows):v.Internal_ID;
@@ -804,7 +815,7 @@ async function saveProduct(isNew,excelRow){
 
 function duplicateProduct(id){
   closeModal();
-  const rows=rowsToObjects(sheetData.Product);
+  const rows=rowsToObjects(sheetData.Product,true);
   const r=rows.find(x=>x.Internal_ID===id);if(!r)return;
   const newId=nextId('V',rows);
   // Open modal pre-filled but with new ID, cleared sale/serial fields
@@ -985,7 +996,7 @@ function startOfWeek(d){const c=new Date(d);c.setDate(c.getDate()-c.getDay()+1);
 
 function drawReportCharts(){
   const from=new Date(document.getElementById('rpt-from').value);const to=new Date(document.getElementById('rpt-to').value);to.setHours(23,59,59);
-  const products=rowsToObjects(sheetData.Product);
+  const products=rowsToObjects(sheetData.Product,true);
   const purchased=products.filter(r=>{const d=parseDateValue(r.Purchase_date);return d&&d>=from&&d<=to;});
   const sold=products.filter(r=>{const d=parseDateValue(r.Sale_date);return d&&d>=from&&d<=to&&r.Sale_price;});
   const mk=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -1078,7 +1089,7 @@ function calcUpdate(){
 }
 
 function renderStockTable(){
-  const products=rowsToObjects(sheetData.Product);
+  const products=rowsToObjects(sheetData.Product,true);
   const unsold=products.filter(r=>{const s=(r.Status||'').toString().trim().toLowerCase();return s!=='sold'&&s!=='received by buyer'&&r.Purchase_Price;});
   const tbody=document.getElementById('stock-table-body');if(!tbody)return;
   tbody.innerHTML=unsold.length?unsold.map(r=>{
@@ -1107,7 +1118,11 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.0 — Critical fix (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.1 — Column manager fix (current)</p>
+          <p style="color:var(--text2)">• Fixed "undefined" showing in Dashboard advertised listings after reordering columns<br>
+          • Fixed all data lookups to use fixed internal key names (Internal_ID, Status etc.) regardless of what display labels or Excel header names have been set — renaming columns in the app no longer breaks data reading</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.0 — Critical fix</p>
           <p style="color:var(--text2)">• Fixed column manager scrambling Excel data — "Save names to Excel" now always writes headers in the correct fixed Excel column order regardless of display order<br>
           • Added validation to saved column config to prevent corrupt state after schema changes<br>
           • Fixed crash on Calculator and Dashboard when Excel rows have non-string Status values (toLowerCase error)</p>
