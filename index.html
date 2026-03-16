@@ -245,6 +245,7 @@ tbody tr:hover td{background:var(--bg)}
     <div class="topbar-right">
       <div class="sync-indicator"><div class="sync-dot" id="sync-dot"></div><span id="sync-label">Connected</span></div>
       <div class="user-chip" id="user-chip"></div>
+      <button class="btn-signout" onclick="openSettingsModal()">⚙ Settings</button>
       <button class="btn-signout" onclick="openAbout()">About</button>
       <button class="btn-signout" onclick="signOut()">Sign out</button>
     </div>
@@ -1223,7 +1224,10 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.2 — Status manager + dashboard improvements (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.3 — Settings button (current)</p>
+          <p style="color:var(--text2)">• Added ⚙ Settings button to the top bar — accessible from any tab</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.2 — Status manager + dashboard improvements</p>
           <p style="color:var(--text2)">• Renamed "Save names to Excel" to "Save view" in column manager<br>
           • Advertised listings on Dashboard now show purchase price, min sell price, advertised date, days listed, quick Edit and Mark Sold buttons<br>
           • Full status manager in Settings — add, remove, rename statuses; toggle per-status inclusion in stock and cost calculations<br>
