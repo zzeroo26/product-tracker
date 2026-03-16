@@ -415,10 +415,11 @@ function fmtCurrency(v){const n=parseFloat(v);return isNaN(n)||v===''||v===null?
 function profitHtml(v,salePrice){
   const n=parseFloat(v);if(isNaN(n)||v===''||v===null)return'<span class="profit-zero">—</span>';
   const sp=parseFloat(salePrice)||0;
-  const margin=sp>0?(n/sp)*100:0;
-  const warn=n>0&&sp>0&&margin<settings.minProfitPct;
+  const cost=sp>0?sp-n:0;
+  const markup=cost>0?(n/cost)*100:0;
+  const warn=n>0&&cost>0&&markup<settings.minProfitPct;
   const cls=warn?'profit-warn':n>0?'profit-pos':n<0?'profit-neg':'profit-zero';
-  const title=warn?`Margin ${margin.toFixed(1)}% — below ${settings.minProfitPct}% target`:`Margin: ${sp>0?margin.toFixed(1)+'%':'no sale price'}`;
+  const title=warn?`Markup ${markup.toFixed(1)}% — below ${settings.minProfitPct}% target`:`Markup on cost: ${cost>0?markup.toFixed(1)+'%':'no sale price'}`;
   return`<span class="${cls}" title="${title}">${n>0?'+':''}£${n.toFixed(2)}${warn?' ⚠':''}</span>`;
 }
 function excelSerialToDate(s){return new Date(Date.UTC(1899,11,30)+s*86400000);}
@@ -567,7 +568,7 @@ function renderDashboard(){
     const d=parseDateValue(r['Advertised Date']);const days=d?Math.floor((new Date()-d)/(1000*60*60*24)):null;
     const cls=days===null?'green-item':days>=10?'red-item':days>=5?'amber-item':'green-item';
     const cost=parseFloat(r.Purchase_Price)||0;
-    const pct=settings.minProfitPct||35;const minSell=pct>0&&pct<100?(cost/(1-pct/100)).toFixed(2):(cost*1.35).toFixed(2);
+    const pct=settings.minProfitPct||35;const minSell=(cost*(1+pct/100)).toFixed(2);
     const advDateStr=d?d.toLocaleDateString('en-GB'):'—';
     return`<div class="adv-item ${cls}" style="flex-wrap:wrap;gap:6px">
       <div style="display:flex;flex-direction:column;gap:2px;min-width:160px">
@@ -661,7 +662,7 @@ function openSettingsModal(){
       <div class="form-section"><div class="form-section-title">Profit margin target</div>
         <div class="field"><label>Minimum profit margin (%)</label>
           <input id="set_minprofit" type="number" step="1" min="1" max="99" value="${settings.minProfitPct||35}">
-          <span style="font-size:12px;color:var(--text3);margin-top:4px">Sales with a margin below this % will show a ⚠ warning. Default 35%. Formula: cost ÷ (1 − margin%) = min sell price.</span>
+          <span style="font-size:12px;color:var(--text3);margin-top:4px">Sales with a margin below this % will show a ⚠ warning. Default 35%. Example: buy £84 × 1.35 = min sell £113.40.</span>
         </div>
       </div>
       <div class="form-section"><div class="form-section-title">Manage statuses</div>
@@ -1150,7 +1151,7 @@ function drawReportCharts(){
   if(bwCtx){reportCharts['chart-bestworst']=new Chart(bwCtx,{type:'bar',data:{labels:bwLabels,datasets:[{data:bwData,backgroundColor:bwColors.map(c=>c+'55'),borderColor:bwColors,borderWidth:1.5,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'£'+v}}}}});}
 
   const tR=sold.reduce((a,r)=>a+parseFloat(r.Sale_price||0),0),tP=sold.reduce((a,r)=>a+parseFloat(r.Profit||0),0),tC=purchased.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
-  const belowTarget=sold.filter(r=>{const p=parseFloat(r.Profit||0);const sp=parseFloat(r.Sale_price||0);return p>0&&sp>0&&(p/sp)*100<(settings.minProfitPct||35);}).length;
+  const belowTarget=sold.filter(r=>{const p=parseFloat(r.Profit||0);const cost=parseFloat(r.Purchase_Price||0);return p>0&&cost>0&&(p/cost)*100<(settings.minProfitPct||35);}).length;
   document.getElementById('rpt-summary').innerHTML=`<h3>Summary</h3>
     <div class="dash-row"><span>Units sold</span><span class="dr-val">${sold.length}</span></div>
     <div class="dash-row"><span>Units purchased</span><span class="dr-val">${purchased.length}</span></div>
@@ -1190,16 +1191,16 @@ function calcUpdate(){
   const target=parseFloat(document.getElementById('c_target')?.value)||settings.minProfitPct||35;
   const sell=parseFloat(document.getElementById('c_sell')?.value)||0;
   const breakEven=buy;
-  const minSell=target>0&&target<100?buy/(1-target/100):buy;
+  const minSell=buy*(1+target/100);
   const actualProfit=sell?sell-buy:null;
-  const actualMargin=sell&&sell>0?((sell-buy)/sell*100):null;
+  const actualMargin=buy>0?((sell-buy)/buy*100):null;
   const res=document.getElementById('calc-results');if(!res)return;
   res.innerHTML=`
     <div class="calc-result"><div class="cr-label">Break-even price</div><div class="cr-value">£${breakEven.toFixed(2)}</div></div>
     <div class="calc-result"><div class="cr-label">Min sell for ${target}% margin</div><div class="cr-value green">£${minSell.toFixed(2)}</div></div>
     ${actualProfit!==null?`
     <div class="calc-result"><div class="cr-label">Actual profit</div><div class="cr-value ${actualMargin>=target?'green':actualProfit>0?'amber':'red'}">£${actualProfit.toFixed(2)}</div></div>
-    <div class="calc-result"><div class="cr-label">Actual margin</div><div class="cr-value ${actualMargin>=target?'green':actualProfit>0?'amber':'red'}">${actualMargin.toFixed(1)}%</div></div>`:''}`;
+    <div class="calc-result"><div class="cr-label">Actual markup</div><div class="cr-value ${actualMargin>=target?'green':actualProfit>0?'amber':'red'}">${actualMargin.toFixed(1)}%</div></div>`:''}`;
 }
 
 function renderStockTable(){
@@ -1208,7 +1209,7 @@ function renderStockTable(){
   const tbody=document.getElementById('stock-table-body');if(!tbody)return;
   tbody.innerHTML=unsold.length?unsold.map(r=>{
     const cost=parseFloat(r.Purchase_Price)||0;
-    const pct=settings.minProfitPct||35;const minSell=pct>0&&pct<100?(cost/(1-pct/100)).toFixed(2):(cost*1.35).toFixed(2);
+    const pct=settings.minProfitPct||35;const minSell=(cost*(1+pct/100)).toFixed(2);
     return`<tr>
       <td class="mono">${r.Internal_ID}</td>
       <td>${r.Make||''} ${r.Model||''}</td>
@@ -1232,9 +1233,9 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.4 — Profit margin % (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.5 — Switched to markup on cost (current)</p>
           <p style="color:var(--text2)">• Replaced fixed £ minimum profit with a profit margin % (default 35%)<br>
-          • Min sell price formula: cost ÷ (1 − margin%) so that profit/sale price equals your target %<br>
+          • Min sell price formula: cost × (1 + markup%) so that profit equals your target % of what you paid<br>
           • ⚠ warning in Products table now triggers when actual margin is below target<br>
           • Calculator, stock table, advertised cards and reports all updated</p>
 
