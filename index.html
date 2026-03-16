@@ -305,7 +305,20 @@ let colConfig=loadColConfig();
 let settings=loadSettings();
 let dragSrcIdx=null;
 
-function loadColConfig(){try{const s=localStorage.getItem('pt_cols');if(s)return JSON.parse(s);}catch{}return DEFAULT_COLS.map(c=>({...c}));}
+function loadColConfig(){
+  try{
+    const s=localStorage.getItem('pt_cols');
+    if(s){
+      const parsed=JSON.parse(s);
+      // Validate that saved config has all the required keys - if not, reset to defaults
+      const savedKeys=parsed.map(c=>c.k).sort().join(',');
+      const defaultKeys=DEFAULT_COLS.map(c=>c.k).sort().join(',');
+      if(savedKeys===defaultKeys) return parsed;
+      // Keys don't match (e.g. after a schema change) - fall through to defaults
+    }
+  }catch{}
+  return DEFAULT_COLS.map(c=>({...c}));
+}
 function saveColConfig(){localStorage.setItem('pt_cols',JSON.stringify(colConfig));}
 function loadSettings(){try{const s=localStorage.getItem('pt_settings');if(s)return JSON.parse(s);}catch{}return{minProfit:30,notifEnabled:false};}
 function saveSettings(){localStorage.setItem('pt_settings',JSON.stringify(settings));}
@@ -705,7 +718,17 @@ function colDragEnd(e){e.currentTarget.classList.remove('dragging');document.que
 function resetColConfig(){colConfig=DEFAULT_COLS.map(c=>({...c}));saveColConfig();closeModal();openColumnManager();renderProductsTable();}
 async function saveColNamesToExcel(){
   setSyncing(true);
-  try{const headers=colConfig.map(c=>c.l);const ec=columnLetter(headers.length);await excelApi('PATCH',`/worksheets/Product/range(address='A1:${ec}1')`,{values:[headers]});toast('Column names saved to Excel!','success');setSyncing(false);}
+  // IMPORTANT: Always write headers in the fixed PRODUCT_HEADERS order (Excel column order)
+  // colConfig may be reordered for display but Excel columns must never change order
+  try{
+    const headers=PRODUCT_HEADERS.map(key=>{
+      const col=colConfig.find(c=>c.k===key);
+      return col?col.l:key; // use renamed label if exists, else original key
+    });
+    const ec=columnLetter(headers.length);
+    await excelApi('PATCH',`/worksheets/Product/range(address='A1:${ec}1')`,{values:[headers]});
+    toast('Column names saved to Excel!','success');setSyncing(false);
+  }
   catch(e){setSyncing(false,true);toast('Failed: '+e.message,'error');}
 }
 
@@ -1084,7 +1107,12 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.9 — Bug fix (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.0 — Critical fix (current)</p>
+          <p style="color:var(--text2)">• Fixed column manager scrambling Excel data — "Save names to Excel" now always writes headers in the correct fixed Excel column order regardless of display order<br>
+          • Added validation to saved column config to prevent corrupt state after schema changes<br>
+          • Fixed crash on Calculator and Dashboard when Excel rows have non-string Status values (toLowerCase error)</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.9 — Bug fix</p>
           <p style="color:var(--text2)">• Fixed crash on Calculator and Dashboard when Excel rows have non-string Status values (toLowerCase error)</p>
 
           <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.8 — Feature release</p>
