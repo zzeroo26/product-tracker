@@ -278,7 +278,24 @@ tbody tr:hover td{background:var(--bg)}
 const MSAL_CONFIG={auth:{clientId:"e079eda8-38fc-4c2a-a92b-6074d7c39ec0",authority:"https://login.microsoftonline.com/consumers",redirectUri:window.location.origin+window.location.pathname},cache:{cacheLocation:"localStorage",storeAuthStateInCookie:true},system:{allowNativeBroker:false}};
 const SCOPES=["Files.ReadWrite","User.Read"];
 const GRAPH="https://graph.microsoft.com/v1.0";
-const PRODUCT_STATUSES=["Purchased","Received","Advertised","Sold","Posted to buyer","Received By Buyer","Defect"];
+// Statuses are now managed dynamically - use getStatuses() not PRODUCT_STATUSES directly
+const DEFAULT_STATUSES=[
+  {name:"Purchased",   inStock:true,  inCost:true},
+  {name:"Received",    inStock:true,  inCost:true},
+  {name:"Advertised",  inStock:true,  inCost:true},
+  {name:"Sold",        inStock:false, inCost:true},
+  {name:"Posted to buyer", inStock:false, inCost:true},
+  {name:"Received By Buyer", inStock:false, inCost:true},
+  {name:"Defect",      inStock:false, inCost:true},
+  {name:"Kept for myself", inStock:false, inCost:true},
+];
+function loadStatuses(){try{const s=localStorage.getItem('pt_statuses');if(s){const p=JSON.parse(s);if(Array.isArray(p)&&p.length)return p;}}catch{}return DEFAULT_STATUSES.map(s=>({...s}));}
+function saveStatuses(){localStorage.setItem('pt_statuses',JSON.stringify(statusConfig));}
+function getStatuses(){return statusConfig.map(s=>s.name);}
+function getStockStatuses(){return statusConfig.filter(s=>s.inStock).map(s=>s.name.toLowerCase());}
+function getCostStatuses(){return statusConfig.filter(s=>s.inCost).map(s=>s.name.toLowerCase());}
+// Keep PRODUCT_STATUSES as a compat alias
+const PRODUCT_STATUSES=[];// populated after statusConfig loads
 const PRODUCT_HEADERS=['Internal_ID','Item','Purchase_Platform','Order/Invoice_number','Status','Advertised Date','Purchase_Price','Purchase_date','Make','Model','Model_Code','Colour','Main_Unit_SN','Main_unit_void_sticker_SN','Battery_SN','Battery_Void_Sticker_SN','Motorised_Head_SN','Sale_Platform','Sold_To','Sale_date','Sale_price','Profit','Cleaned','Ready_to_go','Notes'];
 
 const DEFAULT_COLS=[
@@ -303,6 +320,7 @@ let reportCharts={};
 let selectedRows=new Set();
 let colConfig=loadColConfig();
 let settings=loadSettings();
+let statusConfig=loadStatuses();
 let dragSrcIdx=null;
 
 function loadColConfig(){
@@ -432,7 +450,7 @@ function openStatusDropdown(e,id){
   e.stopPropagation();
   document.querySelectorAll('.status-dropdown').forEach(d=>d.remove());
   const dd=document.createElement('div');dd.className='status-dropdown';
-  PRODUCT_STATUSES.forEach(s=>{
+  getStatuses().forEach(s=>{
     const item=document.createElement('div');item.className='status-dropdown-item';item.textContent=s;
     item.onclick=async(ev)=>{ev.stopPropagation();dd.remove();await quickUpdateStatus(id,s);};
     dd.appendChild(item);
@@ -533,13 +551,43 @@ function renderDashboard(){
   const products=rowsToObjects(sheetData.Product,true);
 
   // Stock value (unsold)
-  const unsold=products.filter(r=>{const s=(r.Status||'').toString().trim().toLowerCase();return s!=='sold'&&s!=='received by buyer';});
+  const unsold=products.filter(r=>{const s=(r.Status||'').toString().trim().toLowerCase();return getStockStatuses().includes(s);});
   const stockValue=unsold.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
 
   const advItems=products.filter(r=>(r.Status||'').toString().trim().toLowerCase()==='advertised').map(r=>{
     const d=parseDateValue(r['Advertised Date']);const days=d?Math.floor((new Date()-d)/(1000*60*60*24)):null;
     const cls=days===null?'green-item':days>=10?'red-item':days>=5?'amber-item':'green-item';
-    return`<div class="adv-item ${cls}"><strong>${r.Internal_ID}</strong>&nbsp;${r.Make} ${r.Model}${days!==null?`<span class="adv-days">${days}d listed</span>`:''}</div>`;
+    const cost=parseFloat(r.Purchase_Price)||0;
+    const minSell=(cost+settings.minProfit).toFixed(2);
+    const advDateStr=d?d.toLocaleDateString('en-GB'):'—';
+    return`<div class="adv-item ${cls}" style="flex-wrap:wrap;gap:6px">
+      <div style="display:flex;flex-direction:column;gap:2px;min-width:160px">
+        <div><strong>${r.Internal_ID}</strong> &nbsp;${r.Make} ${r.Model}</div>
+        <div style="font-size:11px;color:var(--text2)">${r.Colour||''} ${r.Model_Code?'· '+r.Model_Code:''}</div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-left:auto;align-items:center">
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Bought</div>
+          <div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace">${cost?'£'+cost.toFixed(2):'—'}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Min sell</div>
+          <div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace;color:var(--green)">£${minSell}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Listed</div>
+          <div style="font-size:13px;font-weight:500">${advDateStr}</div>
+        </div>
+        <div style="text-align:center;min-width:50px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Days</div>
+          <div style="font-size:18px;font-weight:600">${days!==null?days:'—'}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-edit" onclick="event.stopPropagation();openProductModal('${r.Internal_ID}')">Edit</button>
+          <button class="btn-edit" onclick="event.stopPropagation();quickUpdateStatus('${r.Internal_ID}','Sold')" style="color:var(--green);border-color:#86efac">Sold</button>
+        </div>
+      </div>
+    </div>`;
   }).join('');
 
   const notifBtn=settings.notifEnabled?`<span style="font-size:12px;color:var(--green)">🔔 Notifications on</span>`:`<button class="btn-secondary" style="font-size:12px" onclick="requestNotifPermission()">🔔 Enable notifications</button>`;
@@ -591,17 +639,46 @@ function renderDashboard(){
 // ── SETTINGS MODAL ────────────────────────────────────────────────────────────
 function openSettingsModal(){
   const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='modal-overlay';
-  overlay.innerHTML=`<div class="modal" style="max-width:400px">
+  const statusRows=statusConfig.map((s,i)=>`
+    <tr>
+      <td style="padding:7px 10px;font-size:13px">${s.name}</td>
+      <td style="padding:7px 10px;text-align:center"><input type="checkbox" ${s.inStock?'checked':''} onchange="statusToggle(${i},'inStock',this.checked)" style="accent-color:var(--blue);width:15px;height:15px"></td>
+      <td style="padding:7px 10px;text-align:center"><input type="checkbox" ${s.inCost?'checked':''} onchange="statusToggle(${i},'inCost',this.checked)" style="accent-color:var(--blue);width:15px;height:15px"></td>
+      <td style="padding:7px 10px;text-align:center"><button class="btn-danger" onclick="statusDelete(${i})" style="padding:2px 8px;font-size:11px">×</button></td>
+    </tr>`).join('');
+  overlay.innerHTML=`<div class="modal" style="max-width:560px">
     <div class="modal-header"><h3>Settings</h3><button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="modal-body">
       <div class="form-section"><div class="form-section-title">Profit target</div>
         <div class="field"><label>Minimum profit warning threshold (£)</label>
           <input id="set_minprofit" type="number" step="1" value="${settings.minProfit}">
-          <span style="font-size:12px;color:var(--text3);margin-top:4px">Profits below this will show a ⚠ warning in the Products tab</span>
+          <span style="font-size:12px;color:var(--text3);margin-top:4px">Profits below this show a ⚠ warning in the Products tab</span>
         </div>
       </div>
+      <div class="form-section"><div class="form-section-title">Manage statuses</div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:10px">
+          <strong>In stock calc</strong> — counted in stock value and unsold items list.<br>
+          <strong>In cost calc</strong> — included in cost totals (untick only if you want to fully exclude).
+        </p>
+        <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:var(--surface2)">
+              <th style="padding:7px 10px;text-align:left;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Status</th>
+              <th style="padding:7px 10px;text-align:center;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">In stock calc</th>
+              <th style="padding:7px 10px;text-align:center;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">In cost calc</th>
+              <th style="padding:7px 10px;width:40px"></th>
+            </tr></thead>
+            <tbody id="status-rows">${statusRows}</tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="new-status-name" type="text" placeholder="New status name…" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text)">
+          <button class="btn-secondary" onclick="statusAdd()">+ Add</button>
+        </div>
+        <p style="font-size:11px;color:var(--text3);margin-top:8px">Statuses are also written to a Settings sheet in your Excel file when you save.</p>
+      </div>
       <div class="form-section"><div class="form-section-title">Notifications</div>
-        <p style="font-size:13px;color:var(--text2);margin-bottom:10px">Get a browser notification when listings are 10+ days old. Works on Chrome desktop and Android. Safari on iPhone requires adding the app to your home screen first.</p>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:10px">Get a browser notification when listings are 10+ days old.</p>
         <button class="btn-secondary" onclick="requestNotifPermission()">
           ${settings.notifEnabled?'🔔 Notifications enabled — click to re-request':'🔔 Enable notifications'}
         </button>
@@ -617,9 +694,37 @@ function openSettingsModal(){
   document.body.appendChild(overlay);
 }
 
-function saveSettingsFromModal(){
+function statusToggle(idx,field,val){statusConfig[idx][field]=val;}
+function statusDelete(idx){
+  if(statusConfig.length<=1){toast('Must keep at least one status','error');return;}
+  statusConfig.splice(idx,1);closeModal();openSettingsModal();
+}
+function statusAdd(){
+  const inp=document.getElementById('new-status-name');
+  const name=(inp?.value||'').trim();
+  if(!name){toast('Enter a status name','error');return;}
+  if(statusConfig.find(s=>s.name.toLowerCase()===name.toLowerCase())){toast('Status already exists','error');return;}
+  statusConfig.push({name,inStock:true,inCost:true});
+  inp.value='';closeModal();openSettingsModal();
+}
+
+async function saveSettingsFromModal(){
   settings.minProfit=parseFloat(document.getElementById('set_minprofit').value)||30;
-  saveSettings();closeModal();renderAll();toast('Settings saved','success');
+  saveSettings();saveStatuses();
+  // Write statuses to Excel Settings sheet
+  try{
+    // Try to get or create Settings sheet
+    const sheets=await excelApi('GET','/worksheets');
+    const existing=sheets.value.find(s=>s.name==='Settings');
+    if(!existing){await excelApi('POST','/worksheets',{name:'Settings'});}
+    const rows=[['Status','In Stock Calc','In Cost Calc'],...statusConfig.map(s=>[s.name,s.inStock?'Yes':'No',s.inCost?'Yes':'No'])];
+    const ec=columnLetter(3);const er=rows.length;
+    await excelApi('PATCH',`/worksheets/Settings/range(address='A1:${ec}${er}')`,{values:rows});
+    toast('Settings saved and synced to Excel!','success');
+  }catch(e){
+    toast('Settings saved (Excel sync failed: '+e.message+')','warn');
+  }
+  closeModal();renderAll();
 }
 
 // ── PRODUCTS TABLE ────────────────────────────────────────────────────────────
@@ -665,7 +770,7 @@ function renderProductsTable(){
       <strong><span class="bulk-count">${selectedRows.size}</span> selected</strong>
       <select id="bulk-status-select" style="height:30px;padding:0 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:'DM Sans',sans-serif">
         <option value="">Change status to…</option>
-        ${PRODUCT_STATUSES.map(s=>`<option>${s}</option>`).join('')}
+        ${getStatuses().map(s=>`<option>${s}</option>`).join('')}
       </select>
       <button class="btn-primary" style="padding:5px 12px;font-size:12px" onclick="bulkUpdateStatus()">Apply</button>
       <button class="btn-danger" style="padding:5px 12px;font-size:12px" onclick="bulkDelete()">Delete selected</button>
@@ -675,7 +780,7 @@ function renderProductsTable(){
       <input type="text" placeholder="Search all fields…" value="${productSearch}" oninput="productSearch=this.value;renderProductsTable()">
       <select onchange="productFilter=this.value;renderProductsTable()">
         <option value="">All statuses</option>
-        ${PRODUCT_STATUSES.map(s=>`<option ${productFilter===s?'selected':''}>${s}</option>`).join('')}
+        ${getStatuses().map(s=>`<option ${productFilter===s?'selected':''}>${s}</option>`).join('')}
       </select>
       <button class="btn-primary" onclick="openProductModal(null)">+ Add product</button>
       <button class="btn-secondary" onclick="openColumnManager()">⚙ Columns</button>
@@ -708,13 +813,13 @@ function openColumnManager(){
         <div class="col-list-header">⠿ Drag to reorder &nbsp;·&nbsp; ✓ tick to show &nbsp;·&nbsp; click name to rename</div>
         <div class="col-list-body">${items}</div>
       </div>
-      <p class="col-manager-hint">Renaming updates the table and form labels immediately. Click "Save names to Excel" to also update the header row in your spreadsheet.</p>
+      <p class="col-manager-hint">Renaming updates the table and form labels immediately. Click "Save view" to also update the header row in your spreadsheet.</p>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="resetColConfig()">Reset defaults</button>
       <div class="modal-footer-actions">
         <button class="btn-secondary" onclick="closeModal()">Close</button>
-        <button class="btn-primary" onclick="saveColNamesToExcel()">Save names to Excel</button>
+        <button class="btn-primary" onclick="saveColNamesToExcel()">Save view</button>
       </div>
     </div>
   </div>`;
@@ -749,7 +854,7 @@ function openProductModal(id){
   const r=id?rows.find(x=>x.Internal_ID===id):null;
   const isNew=!r;const v=r||{};
   const sid=isNew?nextId('V',rows):v.Internal_ID;
-  const sopts=PRODUCT_STATUSES.map(s=>`<option ${(v.Status||'')==s?'selected':''}>${s}</option>`).join('');
+  const sopts=getStatuses().map(s=>`<option ${(v.Status||'')==s?'selected':''}>${s}</option>`).join('');
   const dupBtn=!isNew?`<button class="btn-secondary" onclick="duplicateProduct('${v.Internal_ID}')">Duplicate</button>`:'';
   const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='modal-overlay';
   overlay.innerHTML=`<div class="modal">
@@ -825,7 +930,7 @@ function duplicateProduct(id){
 }
 
 function openProductModalWithData(v,sid){
-  const sopts=PRODUCT_STATUSES.map(s=>`<option ${(v.Status||'')==s?'selected':''}>${s}</option>`).join('');
+  const sopts=getStatuses().map(s=>`<option ${(v.Status||'')==s?'selected':''}>${s}</option>`).join('');
   const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='modal-overlay';
   overlay.innerHTML=`<div class="modal">
     <div class="modal-header"><h3>Add product (duplicated from ${v.Internal_ID.replace(sid,'')})</h3><button class="modal-close" onclick="closeModal()">×</button></div>
@@ -1090,7 +1195,7 @@ function calcUpdate(){
 
 function renderStockTable(){
   const products=rowsToObjects(sheetData.Product,true);
-  const unsold=products.filter(r=>{const s=(r.Status||'').toString().trim().toLowerCase();return s!=='sold'&&s!=='received by buyer'&&r.Purchase_Price;});
+  const unsold=products.filter(r=>{const s=(r.Status||'').toString().trim().toLowerCase();return getStockStatuses().includes(s)&&r.Purchase_Price;});
   const tbody=document.getElementById('stock-table-body');if(!tbody)return;
   tbody.innerHTML=unsold.length?unsold.map(r=>{
     const cost=parseFloat(r.Purchase_Price)||0;
@@ -1118,7 +1223,15 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.1 — Column manager fix (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.2 — Status manager + dashboard improvements (current)</p>
+          <p style="color:var(--text2)">• Renamed "Save names to Excel" to "Save view" in column manager<br>
+          • Advertised listings on Dashboard now show purchase price, min sell price, advertised date, days listed, quick Edit and Mark Sold buttons<br>
+          • Full status manager in Settings — add, remove, rename statuses; toggle per-status inclusion in stock and cost calculations<br>
+          • New "Kept for myself" status added by default (excluded from stock calc)<br>
+          • Stock value and Calculator unsold table now respect status flags (defect and kept items excluded by default)<br>
+          • Statuses synced to a Settings sheet in Excel when saved</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v2.1 — Column manager fix</p>
           <p style="color:var(--text2)">• Fixed "undefined" showing in Dashboard advertised listings after reordering columns<br>
           • Fixed all data lookups to use fixed internal key names (Internal_ID, Status etc.) regardless of what display labels or Excel header names have been set — renaming columns in the app no longer breaks data reading</p>
 
