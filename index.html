@@ -245,6 +245,7 @@ tbody tr:hover td{background:var(--bg)}
     <div class="topbar-right">
       <div class="sync-indicator"><div class="sync-dot" id="sync-dot"></div><span id="sync-label">Connected</span></div>
       <div class="user-chip" id="user-chip"></div>
+      <button class="btn-signout" onclick="openAbout()">About</button>
       <button class="btn-signout" onclick="signOut()">Sign out</button>
     </div>
   </div>
@@ -1072,6 +1073,84 @@ function renderStockTable(){
 }
 
 window.addEventListener('DOMContentLoaded',()=>initMsal());
+
+// ── ABOUT / CHANGELOG ─────────────────────────────────────────────────────────
+function openAbout(){
+  const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:600px">
+    <div class="modal-header"><h3>About — Product Tracker</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-section">
+        <div class="form-section-title">Version history</div>
+        <div style="font-size:13px;line-height:1.8">
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.9 — Bug fix (current)</p>
+          <p style="color:var(--text2)">• Fixed crash on Calculator and Dashboard when Excel rows have non-string Status values (toLowerCase error)</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.8 — Feature release</p>
+          <p style="color:var(--text2)">• Quick status update — click any status badge to change it inline<br>
+          • Bulk actions — select multiple rows, change status or delete in one go<br>
+          • Duplicate product — copy an existing product as a starting point<br>
+          • Notes expand — click notes cell to expand inline<br>
+          • Export CSV — download current filtered view<br>
+          • Low profit warning — ⚠ flag on profits below your target<br>
+          • Outstanding stock value card on Dashboard<br>
+          • Browser notifications for overdue listings (10+ days)<br>
+          • Reports: profit by platform, profit by make, best/worst purchases<br>
+          • Calculator tab — break-even calculator + unsold stock table<br>
+          • Settings modal — configure minimum profit target<br>
+          • Keyboard shortcuts: N = new product, Escape = close modal<br>
+          • Mobile FAB button for quick add on small screens</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.7 — Column manager</p>
+          <p style="color:var(--text2)">• Choose which columns to show/hide on Products tab<br>
+          • Drag to reorder columns<br>
+          • Rename columns (updates Excel header row too)<br>
+          • Renamed app from Vacuum Tracker to Product Tracker<br>
+          • Replaced broom icon with magnifying glass</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.6 — Bug fixes</p>
+          <p style="color:var(--text2)">• Dashboard Total Profit now reads correctly from Excel B11<br>
+          • Column headers frozen when scrolling<br>
+          • Row append re-reads sheet live to prevent blank row gaps<br>
+          • Search now covers all columns (was only searching 7 fields)</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.5 — Products tab improvements</p>
+          <p style="color:var(--text2)">• Correct statuses: Purchased, Received, Advertised, Sold, Posted to buyer, Received By Buyer, Defect<br>
+          • Advertised Date column colour coding (green/amber/red by days listed)<br>
+          • Dashboard advertised listings watch list<br>
+          • Auto-fill next available Internal ID when adding new product<br>
+          • Click column headers to sort, click again to reverse<br>
+          • Reports tab with bar charts and period selector</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.4 — Data fixes</p>
+          <p style="color:var(--text2)">• Excel serial numbers now display as proper DD/MM/YYYY dates<br>
+          • Dashboard reads raw Excel rows correctly (was using pandas column names)<br>
+          • Profit colour fixed (positive = green, negative = red)</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.3 — Auth fix</p>
+          <p style="color:var(--text2)">• Switched from redirect login to popup login — fixed redirect loop issue<br>
+          • Removed Excel session requirement — fixed 409 errors when file is open</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v1.2 — Initial full build</p>
+          <p style="color:var(--text2)">• All 5 spreadsheet tabs: Products, Accessories, Tools, Dashboard, Strategy<br>
+          • All 25 columns from Products.xlsx<br>
+          • Microsoft OneDrive login via MSAL<br>
+          • Live read/write to Excel via Microsoft Graph API<br>
+          • Profit auto-calculation<br>
+          • Status badges with colour coding<br>
+          • Search and filter<br>
+          • Add, edit, delete rows</p>
+
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer"><span style="font-size:12px;color:var(--text3)">Built with Claude — Anthropic</span>
+      <div class="modal-footer-actions"><button class="btn-secondary" onclick="closeModal()">Close</button></div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.key==='n'&&!e.ctrlKey&&!e.metaKey&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){openProductModal(null);}});
 </script>
 </body>
