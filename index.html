@@ -508,7 +508,7 @@ function renderDashboard(){
   const products=rowsToObjects(sheetData.Product);
 
   // Stock value (unsold)
-  const unsold=products.filter(r=>{const s=(r.Status||'').toLowerCase();return s!=='sold'&&s!=='received by buyer';});
+  const unsold=products.filter(r=>{const s=(r.Status||'').toString().trim().toLowerCase();return s!=='sold'&&s!=='received by buyer';});
   const stockValue=unsold.reduce((a,r)=>a+parseFloat(r.Purchase_Price||0),0);
 
   const advItems=products.filter(r=>(r.Status||'').toString().trim().toLowerCase()==='advertised').map(r=>{
@@ -1055,7 +1055,7 @@ function calcUpdate(){
 
 function renderStockTable(){
   const products=rowsToObjects(sheetData.Product);
-  const unsold=products.filter(r=>{const s=(r.Status||'').toLowerCase();return s!=='sold'&&s!=='received by buyer'&&r.Purchase_Price;});
+  const unsold=products.filter(r=>{const s=(r.Status||'').toString().trim().toLowerCase();return s!=='sold'&&s!=='received by buyer'&&r.Purchase_Price;});
   const tbody=document.getElementById('stock-table-body');if(!tbody)return;
   tbody.innerHTML=unsold.length?unsold.map(r=>{
     const cost=parseFloat(r.Purchase_Price)||0;
