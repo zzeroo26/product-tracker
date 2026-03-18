@@ -196,6 +196,19 @@ tbody tr:hover td{background:var(--bg)}
 .col-manager-hint{font-size:12px;color:var(--text3);margin-top:.75rem;line-height:1.5}
 /* mobile quick-add */
 .quick-add-fab{display:none;position:fixed;bottom:1.5rem;right:1.5rem;z-index:100;width:52px;height:52px;border-radius:50%;background:var(--text);color:#fff;border:none;font-size:24px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);align-items:center;justify-content:center}
+.sold-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:var(--radius);margin-bottom:6px;font-size:13px;background:var(--green-bg);border-left:3px solid var(--green)}
+.sold-period-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1rem}
+.sold-period-tab{padding:5px 12px;border-radius:99px;border:1px solid var(--border);background:var(--surface);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;color:var(--text2);transition:all .15s}
+.sold-period-tab.active{background:var(--text);color:#fff;border-color:var(--text)}
+.quick-sale-popup{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:250;display:flex;align-items:center;justify-content:center;padding:1rem}
+.quick-sale-card{background:var(--surface);border-radius:var(--radius-lg);border:1px solid var(--border);width:min(400px,100%);padding:1.5rem}
+.quick-sale-card h3{font-size:15px;font-weight:600;margin-bottom:1.25rem}
+.quick-sale-card .field{margin-bottom:12px}
+.quick-sale-card .field label{display:block;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.quick-sale-card .field input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text)}
+.quick-sale-card .field input:focus{outline:none;border-color:var(--border2)}
+.quick-sale-card .field .err{color:var(--red);font-size:11px;margin-top:3px;display:none}
+.quick-sale-card .field input.invalid{border-color:var(--red)}
 @media(max-width:700px){
   .chart-grid{grid-template-columns:1fr}.chart-grid3{grid-template-columns:1fr}
   .form-grid{grid-template-columns:1fr}.form-grid.cols3{grid-template-columns:1fr}
@@ -462,14 +475,113 @@ function openStatusDropdown(e,id){
   const dd=document.createElement('div');dd.className='status-dropdown';
   getStatuses().forEach(s=>{
     const item=document.createElement('div');item.className='status-dropdown-item';item.textContent=s;
-    item.onclick=async(ev)=>{ev.stopPropagation();dd.remove();await quickUpdateStatus(id,s);};
+    item.onclick=async(ev)=>{
+      ev.stopPropagation();dd.remove();
+      // Intercept "Sold" — show quick sale popup instead
+      if(s.toLowerCase()==='sold'){openQuickSalePopup(id);}
+      else{await quickUpdateStatus(id,s);}
+    };
     dd.appendChild(item);
   });
-  // Cancel item
   const cancel=document.createElement('div');cancel.className='status-dropdown-item';cancel.style.color='var(--text3)';cancel.textContent='Cancel';cancel.onclick=()=>dd.remove();dd.appendChild(cancel);
   dd.style.left=e.clientX+'px';dd.style.top=(e.clientY+4)+'px';
   document.body.appendChild(dd);
   setTimeout(()=>document.addEventListener('click',()=>dd.remove(),{once:true}),0);
+}
+
+function openQuickSalePopup(id){
+  const rows=rowsToObjects(sheetData.Product,true);
+  const r=rows.find(x=>x.Internal_ID===id)||{};
+  const cost=parseFloat(r.Purchase_Price)||0;
+  const popup=document.createElement('div');popup.className='quick-sale-popup';popup.id='quick-sale-popup';
+  popup.innerHTML=`<div class="quick-sale-card">
+    <h3>Mark as Sold — ${id}</h3>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:1rem">${r.Make||''} ${r.Model||''} · Bought for ${cost?'£'+cost.toFixed(2):'—'}</p>
+    <div class="field">
+      <label>Sale date <span style="color:var(--red)">*</span></label>
+      <input type="date" id="qs_date" value="${new Date().toISOString().substring(0,10)}">
+      <div class="err" id="qs_date_err">Sale date is required</div>
+    </div>
+    <div class="field">
+      <label>Sale price (£) <span style="color:var(--red)">*</span></label>
+      <input type="number" step="0.01" id="qs_price" placeholder="e.g. 89.99" oninput="qsCalcProfit(${cost})">
+      <div class="err" id="qs_price_err">Sale price is required</div>
+    </div>
+    <div class="field">
+      <label>Sold to <span style="color:var(--red)">*</span></label>
+      <input type="text" id="qs_soldto" placeholder="Buyer username or name">
+      <div class="err" id="qs_soldto_err">Sold to is required</div>
+    </div>
+    <div class="field">
+      <label>Sale platform <span style="color:var(--red)">*</span></label>
+      <input type="text" id="qs_platform" value="${r.Sale_Platform||''}">
+      <div class="err" id="qs_platform_err">Sale platform is required</div>
+    </div>
+    <div id="qs_profit_preview" style="background:var(--surface2);border-radius:var(--radius);padding:10px 14px;margin-bottom:1rem;font-size:13px;display:none">
+      Profit: <strong id="qs_profit_val" style="font-family:'DM Mono',monospace"></strong>
+      &nbsp;·&nbsp; Markup: <strong id="qs_markup_val" style="font-family:'DM Mono',monospace"></strong>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeQuickSale()">Cancel</button>
+      <button class="btn-primary" onclick="saveQuickSale('${id}',${r.__row||0},${cost})">Save & mark sold</button>
+    </div>
+  </div>`;
+  document.body.appendChild(popup);
+  document.getElementById('qs_price').focus();
+}
+
+function qsCalcProfit(cost){
+  const sp=parseFloat(document.getElementById('qs_price')?.value)||0;
+  const prev=document.getElementById('qs_profit_preview');
+  if(sp&&cost){
+    const profit=sp-cost;
+    const markup=cost>0?(profit/cost*100):0;
+    document.getElementById('qs_profit_val').textContent=(profit>=0?'+':'')+'£'+profit.toFixed(2);
+    document.getElementById('qs_profit_val').style.color=profit>=0?'var(--green)':'var(--red)';
+    document.getElementById('qs_markup_val').textContent=markup.toFixed(1)+'%';
+    document.getElementById('qs_markup_val').style.color=markup>=(settings.minProfitPct||35)?'var(--green)':'var(--amber)';
+    prev.style.display='block';
+  } else {prev.style.display='none';}
+}
+
+function closeQuickSale(){
+  const el=document.getElementById('quick-sale-popup');if(el)el.remove();
+}
+
+async function saveQuickSale(id,excelRow,cost){
+  const date=document.getElementById('qs_date').value;
+  const price=document.getElementById('qs_price').value;
+  const soldto=document.getElementById('qs_soldto').value.trim();
+  // Validate
+  let valid=true;
+  ['date','price','soldto','platform'].forEach(f=>{
+    const inp=document.getElementById('qs_'+f);
+    const err=document.getElementById('qs_'+f+'_err');
+    if(!inp.value.trim()){inp.classList.add('invalid');err.style.display='block';valid=false;}
+    else{inp.classList.remove('invalid');err.style.display='none';}
+  });
+  if(!valid)return;
+  const sp=parseFloat(price)||0;
+  const profit=sp&&cost?parseFloat((sp-cost).toFixed(2)):'';
+  const platform=document.getElementById('qs_platform').value;
+  const rows=rowsToObjects(sheetData.Product,true);
+  const r=rows.find(x=>x.Internal_ID===id);if(!r)return;
+  const values=PRODUCT_HEADERS.map(h=>{
+    if(h==='Status')return'Sold';
+    if(h==='Sale_date')return date;
+    if(h==='Sale_price')return sp;
+    if(h==='Sold_To')return soldto;
+    if(h==='Sale_Platform')return platform||r.Sale_Platform||'';
+    if(h==='Profit')return profit;
+    return r[h]??'';
+  });
+  setSyncing(true);
+  try{
+    await writeRow('Product',excelRow||r.__row,values);
+    closeQuickSale();
+    toast(`${id} sold for £${sp.toFixed(2)} — profit ${profit!==''?'£'+profit:'?'}`, 'success');
+    await loadAllSheets();
+  }catch(e){setSyncing(false,true);toast('Save failed: '+e.message,'error');}
 }
 
 async function quickUpdateStatus(id,newStatus){
@@ -580,14 +692,20 @@ function info(text){
   return`<span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);font-size:10px;font-weight:600;text-align:center;line-height:15px;cursor:help;margin-left:5px;flex-shrink:0" title="${text}">i</span>`;
 }
 
-// ── DASHBOARD — listings monitor only ────────────────────────────────────────
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+let soldPeriod='today';
+let soldFrom='',soldTo='';
+
 function renderDashboard(){
   const products=rowsToObjects(sheetData.Product,true);
+  const pct=settings.minProfitPct||35;
+
+  // Advertised listings
   const advItems=products.filter(r=>(r.Status||'').toString().trim().toLowerCase()==='advertised').map(r=>{
     const d=parseDateValue(r['Advertised Date']);const days=d?Math.floor((new Date()-d)/(1000*60*60*24)):null;
     const cls=days===null?'green-item':days>=10?'red-item':days>=5?'amber-item':'green-item';
     const cost=parseFloat(r.Purchase_Price)||0;
-    const pct=settings.minProfitPct||35;const minSell=(cost*(1+pct/100)).toFixed(2);
+    const minSell=(cost*(1+pct/100)).toFixed(2);
     const advDateStr=d?d.toLocaleDateString('en-GB'):'—';
     return`<div class="adv-item ${cls}" style="flex-wrap:wrap;gap:6px">
       <div style="display:flex;flex-direction:column;gap:2px;min-width:160px">
@@ -601,22 +719,114 @@ function renderDashboard(){
         <div style="text-align:center;min-width:50px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Days</div><div style="font-size:18px;font-weight:600">${days!==null?days:'—'}</div></div>
         <div style="display:flex;gap:6px">
           <button class="btn-edit" onclick="event.stopPropagation();openProductModal('${r.Internal_ID}')">Edit</button>
-          <button class="btn-edit" onclick="event.stopPropagation();quickUpdateStatus('${r.Internal_ID}','Sold')" style="color:var(--green);border-color:#86efac">Sold</button>
+          <button class="btn-edit" onclick="event.stopPropagation();openQuickSalePopup('${r.Internal_ID}')" style="color:var(--green);border-color:#86efac">Sold</button>
         </div>
       </div>
     </div>`;
   }).join('');
+
   const notifBtn=settings.notifEnabled?`<span style="font-size:12px;color:var(--green)">🔔 Notifications on</span>`:`<button class="btn-secondary" style="font-size:12px" onclick="requestNotifPermission()">🔔 Enable notifications</button>`;
+
   document.getElementById('tab-dashboard').innerHTML=`
-    <div class="dash-section">
+    <div class="dash-section" style="margin-bottom:1rem">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
         <h3 style="margin-bottom:0">Advertised listings — action tracker</h3>
         <div style="display:flex;align-items:center;gap:10px">${notifBtn}</div>
       </div>
       ${advItems||'<p style="color:var(--text3);font-size:13px;padding:.5rem 0">No items currently advertised.</p>'}
-      <p style="font-size:11px;color:var(--text3);margin-top:8px">🟢 0–4 days &nbsp; 🟡 5–9 days &nbsp; 🔴 10+ days &nbsp;·&nbsp; Min sell based on ${settings.minProfitPct||35}% markup</p>
+      <p style="font-size:11px;color:var(--text3);margin-top:8px">🟢 0–4 days &nbsp; 🟡 5–9 days &nbsp; 🔴 10+ days &nbsp;·&nbsp; Min sell at ${pct}% markup</p>
+    </div>
+    <div class="dash-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+        <h3 style="margin-bottom:0">Recently sold</h3>
+        <span id="sold-period-summary" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+      <div class="sold-period-tabs">
+        ${['today','yesterday','this_week','this_month','last_month','this_year','last_year','custom'].map(p=>`<button class="sold-period-tab ${soldPeriod===p?'active':''}" onclick="setSoldPeriod('${p}')">${p.replace(/_/g,' ').replace(/\w/g,c=>c.toUpperCase())}</button>`).join('')}
+      </div>
+      <div id="sold-custom-dates" style="display:${soldPeriod==='custom'?'flex':'none'};gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center">
+        <div class="field" style="margin:0"><label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">From</label><input type="date" id="sold-from" value="${soldFrom}" onchange="soldFrom=this.value;renderSoldItems()"></div>
+        <div class="field" style="margin:0"><label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">To</label><input type="date" id="sold-to" value="${soldTo}" onchange="soldTo=this.value;renderSoldItems()"></div>
+      </div>
+      <div id="sold-items-list"></div>
     </div>
     <p style="font-size:12px;color:var(--text3);margin-top:.5rem">For full financials and charts, go to the <strong>Reports</strong> tab.</p>`;
+
+  renderSoldItems();
+}
+
+function setSoldPeriod(p){
+  soldPeriod=p;
+  const now=new Date();
+  if(p==='custom'){
+    if(!soldFrom)soldFrom=new Date(now.getFullYear(),now.getMonth(),1).toISOString().substring(0,10);
+    if(!soldTo)soldTo=now.toISOString().substring(0,10);
+  }
+  renderDashboard();
+}
+
+function getSoldPeriodRange(){
+  const now=new Date();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const yesterday=new Date(today);yesterday.setDate(today.getDate()-1);
+  const weekStart=new Date(today);weekStart.setDate(today.getDate()-today.getDay()+1);
+  switch(soldPeriod){
+    case'today': return[today,now];
+    case'yesterday': return[yesterday,new Date(yesterday.getFullYear(),yesterday.getMonth(),yesterday.getDate(),23,59,59)];
+    case'this_week': return[weekStart,now];
+    case'this_month': return[new Date(now.getFullYear(),now.getMonth(),1),now];
+    case'last_month': return[new Date(now.getFullYear(),now.getMonth()-1,1),new Date(now.getFullYear(),now.getMonth(),0,23,59,59)];
+    case'this_year': return[new Date(now.getFullYear(),0,1),now];
+    case'last_year': return[new Date(now.getFullYear()-1,0,1),new Date(now.getFullYear()-1,11,31,23,59,59)];
+    case'custom': return[new Date(soldFrom),new Date(soldTo+'T23:59:59')];
+    default: return[today,now];
+  }
+}
+
+function renderSoldItems(){
+  const products=rowsToObjects(sheetData.Product,true);
+  const soldStatuses=['sold','received by buyer','posted to buyer'];
+  const[from,to]=getSoldPeriodRange();
+  const sold=products.filter(r=>{
+    const s=(r.Status||'').toString().trim().toLowerCase();
+    if(!soldStatuses.includes(s))return false;
+    const d=parseDateValue(r.Sale_date);
+    return d&&d>=from&&d<=to;
+  }).sort((a,b)=>{
+    const da=parseDateValue(a.Sale_date),db=parseDateValue(b.Sale_date);
+    return(db||0)-(da||0);// most recent first
+  });
+
+  const totalRev=sold.reduce((a,r)=>a+parseFloat(r.Sale_price||0),0);
+  const totalProfit=sold.reduce((a,r)=>a+parseFloat(r.Profit||0),0);
+  const sumEl=document.getElementById('sold-period-summary');
+  if(sumEl)sumEl.textContent=sold.length?`${sold.length} item${sold.length>1?'s':''} · Revenue £${totalRev.toFixed(2)} · Profit £${totalProfit.toFixed(2)}`:'No sales in this period';
+
+  const listEl=document.getElementById('sold-items-list');
+  if(!listEl)return;
+  if(!sold.length){listEl.innerHTML='<p style="color:var(--text3);font-size:13px;padding:.5rem 0">No items sold in this period.</p>';return;}
+
+  listEl.innerHTML=sold.map(r=>{
+    const cost=parseFloat(r.Purchase_Price)||0;
+    const salePrice=parseFloat(r.Sale_price)||0;
+    const profit=parseFloat(r.Profit)||0;
+    const profitCls=profit>0?'var(--green)':profit<0?'var(--red)':'var(--text3)';
+    const saleDateStr=fmtDate(r.Sale_date);
+    return`<div class="sold-item" style="flex-wrap:wrap;gap:6px">
+      <div style="display:flex;flex-direction:column;gap:2px;min-width:160px">
+        <div><strong>${r.Internal_ID}</strong> &nbsp;${r.Make} ${r.Model}</div>
+        <div style="font-size:11px;color:var(--text2)">${r.Colour||''} ${r.Model_Code?'· '+r.Model_Code:''} ${r.Sold_To?'· to '+r.Sold_To:''}</div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-left:auto;align-items:center">
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Bought</div><div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace">${cost?'£'+cost.toFixed(2):'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Sold for</div><div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace;color:var(--green)">${salePrice?'£'+salePrice.toFixed(2):'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Profit</div><div style="font-size:16px;font-weight:600;font-family:'DM Mono',monospace;color:${profitCls}">${profit>=0?'+':''}£${profit.toFixed(2)}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Via</div><div style="font-size:12px;font-weight:500">${r.Sale_Platform||'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Date</div><div style="font-size:12px;font-weight:500">${saleDateStr}</div></div>
+        <button class="btn-edit" onclick="openProductModal('${r.Internal_ID}')">Edit</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ── SETTINGS MODAL ────────────────────────────────────────────────────────────
@@ -894,10 +1104,27 @@ function openProductModal(id){
 function recalcProfit(){const pp=parseFloat(document.getElementById('m_pprice')?.value)||0;const sp=parseFloat(document.getElementById('m_sprice')?.value)||0;const pf=document.getElementById('m_profit');if(pf&&sp)pf.value=(sp-pp).toFixed(2);}
 
 async function saveProduct(isNew,excelRow){
+  const status=document.getElementById('m_status').value;
+  // Validate sale fields if status is Sold
+  if(status.toLowerCase()==='sold'){
+    const sdate=document.getElementById('m_sdate').value;
+    const sprice=document.getElementById('m_sprice').value;
+    const soldto=document.getElementById('m_soldto').value.trim();
+    const splat=document.getElementById('m_splat').value.trim();
+    if(!sdate||!sprice||!soldto||!splat){
+      if(!sdate){document.getElementById('m_sdate').style.borderColor='var(--red)';}
+      if(!sprice){document.getElementById('m_sprice').style.borderColor='var(--red)';}
+      if(!soldto){document.getElementById('m_soldto').style.borderColor='var(--red)';}
+      if(!splat){document.getElementById('m_splat').style.borderColor='var(--red)';}
+      toast('Please fill in Sale Date, Sale Price, Sold To and Sale Platform before saving as Sold','error');
+      return;
+    }
+    ['m_sdate','m_sprice','m_soldto','m_splat'].forEach(id=>{document.getElementById(id).style.borderColor='';});
+  }
   const pp=parseFloat(document.getElementById('m_pprice').value)||'';
   const sp=parseFloat(document.getElementById('m_sprice').value)||'';
   const profit=(pp&&sp)?parseFloat((sp-pp).toFixed(2)):(parseFloat(document.getElementById('m_profit').value)||'');
-  const values=[document.getElementById('m_id').value,document.getElementById('m_item').value,document.getElementById('m_pplatform').value,document.getElementById('m_order').value,document.getElementById('m_status').value,document.getElementById('m_advdate').value,pp,document.getElementById('m_pdate').value,document.getElementById('m_make').value,document.getElementById('m_model').value,document.getElementById('m_model_code').value,document.getElementById('m_colour').value,document.getElementById('m_main_sn').value,document.getElementById('m_main_void_sn').value,document.getElementById('m_bat_sn').value,document.getElementById('m_bat_void_sn').value,document.getElementById('m_head_sn').value,document.getElementById('m_splat').value,document.getElementById('m_soldto').value,document.getElementById('m_sdate').value,sp,profit,document.getElementById('m_cleaned').value,document.getElementById('m_ready').value,document.getElementById('m_notes').value];
+  const values=[document.getElementById('m_id').value,document.getElementById('m_item').value,document.getElementById('m_pplatform').value,document.getElementById('m_order').value,status,document.getElementById('m_advdate').value,pp,document.getElementById('m_pdate').value,document.getElementById('m_make').value,document.getElementById('m_model').value,document.getElementById('m_model_code').value,document.getElementById('m_colour').value,document.getElementById('m_main_sn').value,document.getElementById('m_main_void_sn').value,document.getElementById('m_bat_sn').value,document.getElementById('m_bat_void_sn').value,document.getElementById('m_head_sn').value,document.getElementById('m_splat').value,document.getElementById('m_soldto').value,document.getElementById('m_sdate').value,sp,profit,document.getElementById('m_cleaned').value,document.getElementById('m_ready').value,document.getElementById('m_notes').value];
   await saveRowToExcel('Product',isNew,excelRow,values);
 }
 
@@ -1285,7 +1512,14 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.0 — Dashboard &amp; Reports overhaul (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.1 — Sold items tracker + sale validation (current)</p>
+          <p style="color:var(--text2)">• Dashboard now has a "Recently sold" section with period tabs (Today, Yesterday, This week, This month, Last month, This year, Last year, Custom) showing sold item cards with bought price, sold price, profit, platform and date<br>
+          • When marking an item as Sold via the status badge dropdown, a quick sale popup now appears requiring Sale Date, Sale Price and Sold To before saving<br>
+          • When saving via the full edit form with status = Sold, Sale Date, Sale Price and Sold To are now mandatory<br>
+          • Profit and markup % shown live in the quick sale popup as you type the sale price<br>
+          • Sold items sorted most recent first</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.0 — Dashboard &amp; Reports overhaul</p>
           <p style="color:var(--text2)">• Dashboard simplified to advertised listings only<br>
           • Reports is now single source of truth — calculated live from Products/Accessories/Tools<br>
           • Net profit = revenue from sold items − COGS − accessories − tools overheads<br>
