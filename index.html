@@ -757,10 +757,18 @@ function renderDashboard(){
       </div>
       <div id="purchased-items-list"></div>
     </div>
+    <div class="dash-section" style="margin-top:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="margin-bottom:0">Received — needs advertising</h3>
+        <span id="received-summary" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+      <div id="received-items-list"></div>
+    </div>
     <p style="font-size:12px;color:var(--text3);margin-top:.5rem">For full financials and charts, go to the <strong>Reports</strong> tab.</p>`;
 
   renderSoldItems();
   renderPurchasedItems();
+  renderReceivedItems();
 }
 
 function renderPurchasedItems(){
@@ -825,6 +833,42 @@ function getSoldPeriodRange(){
     case'custom': return[new Date(soldFrom),new Date(soldTo+'T23:59:59')];
     default: return[today,now];
   }
+}
+
+function renderReceivedItems(){
+  const products=rowsToObjects(sheetData.Product,true);
+  const pct=settings.minProfitPct||35;
+  const received=products.filter(r=>(r.Status||'').toString().trim().toLowerCase()==='received')
+    .sort((a,b)=>{
+      const da=parseDateValue(a.Purchase_date),db=parseDateValue(b.Purchase_date);
+      return(da||0)-(db||0); // oldest first — most urgent to advertise
+    });
+
+  const sumEl=document.getElementById('received-summary');
+  if(sumEl)sumEl.textContent=received.length?`${received.length} item${received.length>1?'s':''} waiting to be advertised`:'None';
+
+  const listEl=document.getElementById('received-items-list');
+  if(!listEl)return;
+  if(!received.length){listEl.innerHTML='<p style="color:var(--text3);font-size:13px;padding:.5rem 0">No items with status "Received".</p>';return;}
+
+  listEl.innerHTML=received.map(r=>{
+    const cost=parseFloat(r.Purchase_Price)||0;
+    const minSell=(cost*(1+pct/100)).toFixed(2);
+    const purchaseDateStr=fmtDate(r.Purchase_date);
+    return`<div class="adv-item" style="flex-wrap:wrap;gap:6px;background:#fdf4ff;border-left:3px solid #7e22ce">
+      <div style="display:flex;flex-direction:column;gap:2px;min-width:160px">
+        <div><strong>${r.Internal_ID}</strong> &nbsp;${r.Make} ${r.Model}</div>
+        <div style="font-size:11px;color:var(--text2)">${r.Colour||''} ${r.Model_Code?'· '+r.Model_Code:''}</div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-left:auto;align-items:center">
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Bought</div><div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace">${cost?'£'+cost.toFixed(2):'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Min sell</div><div style="font-size:13px;font-weight:500;font-family:'DM Mono',monospace;color:var(--green)">£${minSell}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Received</div><div style="font-size:12px;font-weight:500">${purchaseDateStr}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Via</div><div style="font-size:12px;font-weight:500">${r.Purchase_Platform||'—'}</div></div>
+        <button class="btn-edit" onclick="openProductModal('${r.Internal_ID}')">Edit</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderSoldItems(){
@@ -1556,7 +1600,10 @@ function openAbout(){
         <div class="form-section-title">Version history</div>
         <div style="font-size:13px;line-height:1.8">
 
-          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.2 — Purchased items tracker on Dashboard (current)</p>
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.3 — Received items section on Dashboard (current)</p>
+          <p style="color:var(--text2)">• Added "Received — needs advertising" section to Dashboard showing items with status Received, in purple cards sorted oldest first (most urgent to advertise at the top)</p>
+
+          <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.2 — Purchased items tracker on Dashboard</p>
           <p style="color:var(--text2)">• Added "Purchased — awaiting arrival" section to Dashboard showing items with status Purchased, with bought price, min sell price, purchase date, platform and Edit button. Shown in blue cards sorted most recent first.</p>
 
           <p style="font-weight:600;color:var(--text);margin-top:1rem">v3.1 — Sold items tracker + sale validation</p>
